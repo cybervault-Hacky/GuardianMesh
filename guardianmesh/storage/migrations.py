@@ -302,6 +302,293 @@ MIGRATIONS: Sequence[Migration] = [
         CREATE INDEX IF NOT EXISTS idx_transport_seq_session ON transport_sequences(session_id);
         """,
     ),
+    Migration(
+        version=7,
+        name="007_vista_screen_sessions",
+        up_sql="""
+        CREATE TABLE IF NOT EXISTS screen_sessions (
+            session_id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            parent_id TEXT NOT NULL,
+            authorization_id TEXT,
+            state TEXT NOT NULL CHECK(state IN (
+                'REQUESTED', 'PENDING_CHILD_APPROVAL', 'APPROVED',
+                'ACTIVE', 'STOPPED', 'DENIED', 'EXPIRED', 'REVOKED'
+            )),
+            transport_session_id TEXT,
+            requested_at TEXT NOT NULL,
+            approved_at TEXT,
+            started_at TEXT,
+            stopped_at TEXT,
+            expires_at TEXT NOT NULL,
+            last_frame_at TEXT,
+            frame_count INTEGER NOT NULL DEFAULT 0,
+            bytes_sent INTEGER NOT NULL DEFAULT 0,
+            bytes_received INTEGER NOT NULL DEFAULT 0,
+            width INTEGER NOT NULL DEFAULT 0,
+            height INTEGER NOT NULL DEFAULT 0,
+            codec TEXT NOT NULL DEFAULT 'TEST',
+            max_fps INTEGER NOT NULL DEFAULT 10,
+            stop_reason TEXT,
+            label TEXT,
+            metadata TEXT DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_device
+            ON screen_sessions(device_id);
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_parent
+            ON screen_sessions(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_state
+            ON screen_sessions(state);
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_requested
+            ON screen_sessions(requested_at);
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_active_device
+            ON screen_sessions(device_id, state);
+
+        CREATE TABLE IF NOT EXISTS screen_authorizations (
+            authorization_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL UNIQUE,
+            device_id TEXT NOT NULL,
+            parent_id TEXT NOT NULL,
+            decision TEXT NOT NULL CHECK(decision IN (
+                'PENDING', 'APPROVED', 'DENIED', 'EXPIRED', 'REVOKED'
+            )),
+            requested_at TEXT NOT NULL,
+            approved_at TEXT,
+            denied_at TEXT,
+            expires_at TEXT NOT NULL,
+            max_duration_seconds INTEGER NOT NULL,
+            label TEXT,
+            metadata TEXT DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_screen_auth_session
+            ON screen_authorizations(session_id);
+        CREATE INDEX IF NOT EXISTS idx_screen_auth_state
+            ON screen_authorizations(decision);
+        """,
+    ),
+    Migration(
+        version=8,
+        name="008_aegis_screen_capture",
+        up_sql="""
+        CREATE TABLE IF NOT EXISTS aegis_sessions (
+            aegis_session_id TEXT PRIMARY KEY,
+            screen_session_id TEXT NOT NULL,
+            device_id TEXT NOT NULL,
+            parent_id TEXT NOT NULL,
+            authorization_id TEXT,
+            consent_state TEXT NOT NULL DEFAULT 'NOT_REQUESTED' CHECK(
+                consent_state IN (
+                    'NOT_REQUESTED', 'REQUESTED', 'GRANTED',
+                    'DENIED', 'REVOKED', 'EXPIRED'
+                )
+            ),
+            platform TEXT NOT NULL DEFAULT 'UNKNOWN',
+            backend TEXT NOT NULL DEFAULT 'TEST',
+            state TEXT NOT NULL DEFAULT 'INITIALIZED',
+            transport_session_id TEXT,
+            created_at TEXT NOT NULL,
+            consent_requested_at TEXT,
+            consent_granted_at TEXT,
+            started_at TEXT,
+            stopped_at TEXT,
+            expires_at TEXT NOT NULL,
+            last_frame_sequence INTEGER NOT NULL DEFAULT 0,
+            stop_reason TEXT,
+            label TEXT,
+            metadata TEXT DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_aegis_sessions_screen
+            ON aegis_sessions(screen_session_id);
+        CREATE INDEX IF NOT EXISTS idx_aegis_sessions_device
+            ON aegis_sessions(device_id);
+        CREATE INDEX IF NOT EXISTS idx_aegis_sessions_state
+            ON aegis_sessions(state);
+        CREATE INDEX IF NOT EXISTS idx_aegis_sessions_created
+            ON aegis_sessions(created_at);
+        """,
+    ),
+    Migration(
+        version=9,
+        name="009_orion_schema",
+        up_sql="""
+        CREATE TABLE IF NOT EXISTS orion_events (
+            event_id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            priority TEXT NOT NULL DEFAULT 'NORMAL',
+            sequence INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_orion_events_device
+            ON orion_events(device_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_events_type
+            ON orion_events(event_type);
+        CREATE INDEX IF NOT EXISTS idx_orion_events_correlation
+            ON orion_events(correlation_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_events_created
+            ON orion_events(created_at);
+
+        CREATE TABLE IF NOT EXISTS orion_actions (
+            action_id TEXT PRIMARY KEY,
+            action_type TEXT NOT NULL,
+            device_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            parameters TEXT NOT NULL DEFAULT '{}',
+            idempotency_key TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            next_attempt_at TEXT,
+            last_error TEXT,
+            updated_at TEXT,
+            result TEXT NOT NULL DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_device
+            ON orion_actions(device_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_status
+            ON orion_actions(status);
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_idempotency
+            ON orion_actions(idempotency_key);
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_correlation
+            ON orion_actions(correlation_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_created
+            ON orion_actions(created_at);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_orion_actions_idempotency_unique
+            ON orion_actions(idempotency_key)
+            WHERE idempotency_key IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS orion_capabilities (
+            capability_id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL UNIQUE,
+            capabilities_json TEXT NOT NULL DEFAULT '{}',
+            schema_version TEXT NOT NULL,
+            discovered_at TEXT NOT NULL,
+            updated_at TEXT,
+            source TEXT NOT NULL DEFAULT 'explicit-discovery',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_orion_capabilities_device
+            ON orion_capabilities(device_id);
+
+        CREATE TABLE IF NOT EXISTS orion_reconciliation (
+            report_id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            events_processed INTEGER NOT NULL DEFAULT 0,
+            conflicts_detected INTEGER NOT NULL DEFAULT 0,
+            conflicts_resolved INTEGER NOT NULL DEFAULT 0,
+            stale_events INTEGER NOT NULL DEFAULT 0,
+            failed_actions INTEGER NOT NULL DEFAULT 0,
+            final_state TEXT NOT NULL DEFAULT 'SYNCED',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_orion_reconciliation_device
+            ON orion_reconciliation(device_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_reconciliation_started
+            ON orion_reconciliation(started_at);
+        """,
+    ),
+    Migration(
+        version=10,
+        name="010_atlas",
+        up_sql="""
+        CREATE TABLE IF NOT EXISTS atlas_backups (
+            backup_id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            orion_version TEXT NOT NULL,
+            backup_format TEXT NOT NULL DEFAULT 'atlas-1.0',
+            device_id TEXT,
+            integrity_digest TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'VALID',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_atlas_backups_created
+            ON atlas_backups(created_at);
+        CREATE INDEX IF NOT EXISTS idx_atlas_backups_device
+            ON atlas_backups(device_id);
+
+        CREATE TABLE IF NOT EXISTS atlas_health (
+            health_id TEXT PRIMARY KEY,
+            subsystem TEXT NOT NULL,
+            status TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            summary TEXT NOT NULL DEFAULT '',
+            remediation TEXT NOT NULL DEFAULT '',
+            schema_version TEXT NOT NULL DEFAULT '1.0'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_atlas_health_subsystem
+            ON atlas_health(subsystem);
+        CREATE INDEX IF NOT EXISTS idx_atlas_health_timestamp
+            ON atlas_health(timestamp);
+
+        CREATE TABLE IF NOT EXISTS atlas_recovery (
+            recovery_id TEXT PRIMARY KEY,
+            device_id TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            operation TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            actions_taken INTEGER NOT NULL DEFAULT 0,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_atlas_recovery_device
+            ON atlas_recovery(device_id);
+        CREATE INDEX IF NOT EXISTS idx_atlas_recovery_status
+            ON atlas_recovery(status);
+
+        CREATE TABLE IF NOT EXISTS atlas_capability_versions (
+            capability_id TEXT PRIMARY KEY,
+            capability_name TEXT NOT NULL,
+            version TEXT NOT NULL DEFAULT '1.0',
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            requires_trust INTEGER NOT NULL DEFAULT 0,
+            requires_vista INTEGER NOT NULL DEFAULT 0,
+            requires_aegis INTEGER NOT NULL DEFAULT 0,
+            risk_level TEXT NOT NULL DEFAULT 'LOW',
+            schema_version TEXT NOT NULL DEFAULT '1.0',
+            updated_at TEXT NOT NULL,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_atlas_capability_versions_status
+            ON atlas_capability_versions(status);
+        CREATE INDEX IF NOT EXISTS idx_atlas_capability_versions_risk
+            ON atlas_capability_versions(risk_level);
+
+        CREATE TABLE IF NOT EXISTS atlas_retention (
+            retention_id TEXT PRIMARY KEY,
+            target_table TEXT NOT NULL,
+            retention_days INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_atlas_retention_target
+            ON atlas_retention(target_table);
+        """,
+    ),
 ]
 
 

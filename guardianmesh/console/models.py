@@ -27,6 +27,10 @@ class DashboardSnapshot:
     recent_activity: list[dict[str, Any]] = field(default_factory=list)
     subsystem_status: dict[str, str] = field(default_factory=dict)
     summary_health: dict[str, Any] = field(default_factory=dict)
+    # Vista / Phase 7 screen view state — metadata only, never frame content.
+    screen_active_sessions: int = 0
+    screen_pending_authorizations: int = 0
+    screen_active_devices: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize dashboard snapshot to dictionary."""
@@ -44,11 +48,17 @@ class DashboardSnapshot:
             "recent_activity": self.recent_activity,
             "subsystem_status": self.subsystem_status,
             "summary_health": self.summary_health,
+            "screen_view": {
+                "active_sessions": self.screen_active_sessions,
+                "pending_authorizations": self.screen_pending_authorizations,
+                "active_devices": self.screen_active_devices,
+            },
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DashboardSnapshot:
         """Deserialize dashboard snapshot from dictionary."""
+        screen_block = data.get("screen_view", {}) or {}
         return cls(
             generated_at=data.get("generated_at", ""),
             device_count=int(data.get("device_count", 0)),
@@ -63,6 +73,9 @@ class DashboardSnapshot:
             recent_activity=data.get("recent_activity", []),
             subsystem_status=data.get("subsystem_status", {}),
             summary_health=data.get("summary_health", {}),
+            screen_active_sessions=int(screen_block.get("active_sessions", 0)),
+            screen_pending_authorizations=int(screen_block.get("pending_authorizations", 0)),
+            screen_active_devices=screen_block.get("active_devices", []),
         )
 
 

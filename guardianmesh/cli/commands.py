@@ -550,6 +550,1004 @@ def cmd_doctor(args: argparse.Namespace, config: GuardianConfig) -> int:
     if not router_ok:
         critical_failure = True
 
+    # 16. Vista Module Check (Phase 7)
+    vista_mod_ok = True
+    vista_mod_msg = None
+    try:
+        import guardianmesh.screen as _vista_module
+
+        for required in (
+            "ScreenController",
+            "ScreenSession",
+            "ScreenAuthorizationManager",
+            "FrameStreamBuffer",
+            "ScreenIndicator",
+            "AdapterOnlyScreenProvider",
+            "ScreenTransportBridge",
+            "ScreenSessionRegistry",
+            "ScreenAuthorizationRegistry",
+        ):
+            if not hasattr(_vista_module, required):
+                vista_mod_ok = False
+                vista_mod_msg = f"Vista module missing '{required}'."
+                break
+    except Exception as e:
+        vista_mod_ok = False
+        vista_mod_msg = f"Failed to import Vista module: {e}"
+
+    checks.append(("Vista module", vista_mod_ok, vista_mod_msg))
+    if not vista_mod_ok:
+        critical_failure = True
+
+    # 17. Screen Authorization State Machine Check (Vista)
+    auth_sm_ok = True
+    auth_sm_msg = None
+    try:
+        from guardianmesh.screen.authorization import ScreenAuthorizationManager
+
+        mgr = ScreenAuthorizationManager()
+        a = mgr.create_request(
+            session_id="SCN-TESTDOCTOR1",
+            device_id="GM-C-00000001",
+            parent_id="GM-P-00000001",
+            max_duration_seconds=60,
+        )
+        mgr.approve(a.authorization_id)
+        b = mgr.create_request(
+            session_id="SCN-TESTDOCTOR2",
+            device_id="GM-C-00000002",
+            parent_id="GM-P-00000001",
+            max_duration_seconds=60,
+        )
+        mgr.deny(b.authorization_id)
+    except Exception as e:
+        auth_sm_ok = False
+        auth_sm_msg = f"Screen authorization state machine error: {e}"
+
+    checks.append(("Screen authorization", auth_sm_ok, auth_sm_msg))
+    if not auth_sm_ok:
+        critical_failure = True
+
+    # 18. Screen Session Manager Check (Vista)
+    sess_mgr_ok = True
+    sess_mgr_msg = None
+    try:
+        from guardianmesh.screen.registry import ScreenSessionRegistry
+        from guardianmesh.screen.session import ScreenSessionConfig, ScreenSessionManager
+
+        if not db_ok:
+            sess_mgr_ok = False
+            sess_mgr_msg = "Database unavailable for screen session manager."
+        else:
+            sm = ScreenSessionManager(registry=ScreenSessionRegistry(db))
+            _ = sm.create_session(
+                device_id="GM-C-00000010",
+                parent_id="GM-P-00000010",
+                config=ScreenSessionConfig(max_duration_seconds=30),
+            )
+    except Exception as e:
+        sess_mgr_ok = False
+        sess_mgr_msg = f"Screen session manager error: {e}"
+
+    checks.append(("Screen session manager", sess_mgr_ok, sess_mgr_msg))
+    if not sess_mgr_ok:
+        critical_failure = True
+
+    # 19. Frame Validation Check (Vista)
+    frame_val_ok = True
+    frame_val_msg = None
+    try:
+        from guardianmesh.screen.frames import (
+            FrameStreamBuffer,
+            FrameValidator,
+        )
+        from guardianmesh.screen.models import ScreenFrame
+
+        v = FrameValidator()
+        f = ScreenFrame(
+            session_id="SCN-DOCTOR",
+            device_id="GM-C-00000020",
+            width=320,
+            height=240,
+            payload_size=64,
+            payload=b"x" * 64,
+        )
+        v.validate(f)
+        f.payload_size = 999
+        try:
+            v.validate(f)
+            frame_val_ok = False
+            frame_val_msg = "Frame validator did not reject size mismatch."
+        except Exception:
+            frame_val_ok = True
+        buf = FrameStreamBuffer("SCN-DOCTOR", max_queue_size=2)
+        f2 = ScreenFrame(
+            session_id="SCN-DOCTOR",
+            device_id="GM-C-00000020",
+            sequence=1,
+            width=320,
+            height=240,
+            payload_size=16,
+            payload=b"a" * 16,
+        )
+        buf.ingest(f2)
+    except Exception as e:
+        frame_val_ok = False
+        frame_val_msg = f"Frame validation error: {e}"
+
+    checks.append(("Frame validation", frame_val_ok, frame_val_msg))
+    if not frame_val_ok:
+        critical_failure = True
+
+    # 20. Vista-Nexus Integration Check
+    nexus_integ_ok = True
+    nexus_integ_msg = None
+    try:
+        from guardianmesh.screen.transport import (
+            ScreenMessageType,
+            ScreenTransportBridge,
+            is_allowed_screen_message_type,
+        )
+
+        for t in ScreenMessageType:
+            if t.is_remote_control:
+                nexus_integ_ok = False
+                nexus_integ_msg = f"Screen message type {t.value} marked as remote control."
+                break
+        if nexus_integ_ok:
+            for forbidden in (
+                "SCREEN_CONTROL",
+                "REMOTE_INPUT",
+                "EXECUTE",
+                "SHELL",
+                "COMMAND",
+            ):
+                if is_allowed_screen_message_type(forbidden):
+                    nexus_integ_ok = False
+                    nexus_integ_msg = f"Forbidden message type '{forbidden}' in allowlist."
+                    break
+        if nexus_integ_ok:
+            _ = ScreenTransportBridge()
+    except Exception as e:
+        nexus_integ_ok = False
+        nexus_integ_msg = f"Nexus integration error: {e}"
+
+    checks.append(("Nexus integration", nexus_integ_ok, nexus_integ_msg))
+    if not nexus_integ_ok:
+        critical_failure = True
+
+    # 21. Resource Limits Check (Vista)
+    res_ok = True
+    res_msg = None
+    try:
+        if (
+            config.screen_view_default_max_duration_seconds <= 0
+            or config.screen_view_max_duration_seconds
+            < config.screen_view_default_max_duration_seconds
+        ):
+            res_ok = False
+            res_msg = "Invalid screen view max duration configuration."
+        elif config.screen_view_max_fps <= 0 or config.screen_view_max_width <= 0:
+            res_ok = False
+            res_msg = "Invalid screen view resolution/fps configuration."
+    except Exception as e:
+        res_ok = False
+        res_msg = f"Resource limits check error: {e}"
+
+    checks.append(("Resource limits", res_ok, res_msg))
+    if not res_ok:
+        critical_failure = True
+
+    # 22. Child Stop Mechanism Check (Vista)
+    stop_ok = True
+    stop_msg = None
+    try:
+        from guardianmesh.screen.models import ScreenSessionState, StopReason
+        from guardianmesh.screen.registry import ScreenSessionRegistry
+        from guardianmesh.screen.session import ScreenSessionConfig, ScreenSessionManager
+
+        if db_ok:
+            sm = ScreenSessionManager(registry=ScreenSessionRegistry(db))
+            sess = sm.create_session(
+                device_id="GM-C-00000030",
+                parent_id="GM-P-00000030",
+                config=ScreenSessionConfig(max_duration_seconds=30),
+            )
+            sess.request(
+                device_id=sess.info.device_id,
+                parent_id=sess.info.parent_id,
+                max_duration_seconds=30,
+            )
+            sess.transition_to(ScreenSessionState.APPROVED)
+            sess.start()
+            sess.stop(reason=StopReason.CHILD_STOPPED)
+            if sess.info.state != ScreenSessionState.STOPPED:
+                stop_ok = False
+                stop_msg = "Child stop did not transition session to STOPPED."
+    except Exception as e:
+        stop_ok = False
+        stop_msg = f"Child stop mechanism error: {e}"
+
+    checks.append(("Child stop mechanism", stop_ok, stop_msg))
+    if not stop_ok:
+        critical_failure = True
+
+    # 23. Visible Indicator Boundary Check (Vista)
+    indicator_ok = True
+    indicator_msg: str | None = None
+    try:
+        from guardianmesh.screen.indicator import (
+            AdapterOnlyScreenProvider,
+            ScreenIndicator,
+        )
+
+        provider = AdapterOnlyScreenProvider()
+        if provider.is_real_capture:
+            indicator_ok = False
+            indicator_msg = (
+                "AdapterOnlyScreenProvider must NOT report is_real_capture=True."
+            )
+        else:
+            indicator_msg = "Android screen provider: integration adapter only"
+        ind = ScreenIndicator()
+        ind.activate(
+            session_id="SCN-INDICATOR",
+            parent_label="Test Guardian",
+            max_duration_seconds=120,
+            started_at="2026-08-13T00:00:00+00:00",
+        )
+        text = ind.render()
+        if "SCREEN VIEW ACTIVE" not in text:
+            indicator_ok = False
+            indicator_msg = "Indicator does not display SCREEN VIEW ACTIVE marker."
+    except Exception as e:
+        indicator_ok = False
+        indicator_msg = f"Indicator check error: {e}"
+
+    # The "indicator provider adapter only" notice is intentionally a Notice,
+    # not a failure: this is the documented Vista design.
+    checks.append(("Visible indicator", indicator_ok, indicator_msg))
+    if not indicator_ok:
+        critical_failure = True
+
+    # 24. Aegis Module Check (Phase 8)
+    aegis_mod_ok = True
+    aegis_mod_msg: str | None = None
+    try:
+        import guardianmesh.aegis as _aegis_module
+
+        for required in (
+            "AegisController",
+            "SystemConsentGate",
+            "MediaProjectionProvider",
+            "ScreenEncoder",
+            "ForegroundServiceIndicator",
+            "AegisFramePipeline",
+            "AegisSessionRegistry",
+            "AdapterOnlyMediaProjectionProvider",
+            "TestScreenEncoder",
+        ):
+            if not hasattr(_aegis_module, required):
+                aegis_mod_ok = False
+                aegis_mod_msg = f"Aegis module missing '{required}'."
+                break
+    except Exception as e:
+        aegis_mod_ok = False
+        aegis_mod_msg = f"Failed to import Aegis module: {e}"
+
+    checks.append(("Aegis module", aegis_mod_ok, aegis_mod_msg))
+    if not aegis_mod_ok:
+        critical_failure = True
+
+    # 25. System Consent Gate Check (Aegis)
+    consent_ok = True
+    consent_msg: str | None = None
+    try:
+        from guardianmesh.aegis.consent import (
+            SystemConsentGate,
+            default_linux_capability,
+        )
+
+        gate = SystemConsentGate(capability=default_linux_capability())
+        # On Linux, capture must always be refused.
+        decision = gate.evaluate("SCN-1")
+        if decision.allowed:
+            consent_ok = False
+            consent_msg = "Linux consent gate must not allow capture."
+        # Assert capture allowed raises on Linux.
+        try:
+            gate.assert_capture_allowed("SCN-1")
+            consent_ok = False
+            consent_msg = "Linux assert_capture_allowed must raise."
+        except Exception:
+            consent_ok = True
+    except Exception as e:
+        consent_ok = False
+        consent_msg = f"Consent gate check error: {e}"
+
+    checks.append(("System consent gate", consent_ok, consent_msg))
+    if not consent_ok:
+        critical_failure = True
+
+    # 26. Aegis Privacy Redaction Check
+    aegis_privacy_ok = True
+    aegis_privacy_msg: str | None = None
+    try:
+        import datetime
+
+        from guardianmesh.aegis.models import (
+            AegisPlatform,
+            AegisSessionInfo,
+            EncoderBackend,
+            SystemConsentState,
+        )
+
+        # Verify the AegisSessionInfo model does not include any
+        # payload-bearing fields.
+        now = datetime.datetime.now(datetime.UTC)
+        info = AegisSessionInfo(
+            aegis_session_id="AEG-DOCTOR",
+            screen_session_id="SCN-DOCTOR",
+            device_id="GM-C-00000020",
+            parent_id="GM-P-00000020",
+            consent_state=SystemConsentState.NOT_REQUESTED,
+            platform=AegisPlatform.ANDROID,
+            backend=EncoderBackend.MEDIA_CODEC,
+            state="INITIALIZED",
+            created_at=now.isoformat(),
+            expires_at=(now + datetime.timedelta(seconds=300)).isoformat(),
+        )
+        data = info.to_dict()
+        forbidden_keys: set[str] = {
+            "payload",
+            "payload_hex",
+            "screenshot",
+            "frame_data",
+            "image",
+            "raw_pixels",
+        }
+        leaked = forbidden_keys & set(data.keys())
+        if leaked:
+            aegis_privacy_ok = False
+            aegis_privacy_msg = f"AegisSessionInfo leaked payload field: {leaked}"
+    except Exception as e:
+        aegis_privacy_ok = False
+        aegis_privacy_msg = f"Aegis privacy check error: {e}"
+
+    checks.append(("Aegis privacy redaction", aegis_privacy_ok, aegis_privacy_msg))
+    if not aegis_privacy_ok:
+        critical_failure = True
+
+    # 27. Aegis Android Provider Boundary Check
+    aegis_provider_ok = True
+    aegis_provider_msg: str | None = None
+    try:
+        from guardianmesh.aegis.media_projection import (
+            AdapterOnlyMediaProjectionProvider,
+        )
+
+        aegis_provider = AdapterOnlyMediaProjectionProvider()
+        if aegis_provider.is_real_capture:
+            aegis_provider_ok = False
+            aegis_provider_msg = (
+                "AdapterOnlyMediaProjectionProvider must NOT report is_real_capture=True."
+            )
+        else:
+            aegis_provider_msg = (
+                "Android capture provider: integration adapter only"
+            )
+    except Exception as e:
+        aegis_provider_ok = False
+        aegis_provider_msg = f"Aegis provider check error: {e}"
+
+    checks.append(("Android provider boundary", aegis_provider_ok, aegis_provider_msg))
+    if not aegis_provider_ok:
+        critical_failure = True
+
+    # 28. Orion Module Check (Phase 9)
+    orion_mod_ok = True
+    orion_mod_msg: str | None = None
+    try:
+        import guardianmesh.orion as _orion_module
+
+        for required in (
+            "OrionCoordinator",
+            "OrionEventBus",
+            "OrionActionQueue",
+            "OrionExecutor",
+            "OrionScheduler",
+            "OrionActionHandlers",
+            "OrionConsentValidator",
+            "OrionStateReconciler",
+            "OrionRegistry",
+            "OrionCapabilityRegistry",
+            "OrionEvent",
+            "OrionAction",
+            "OrionCapability",
+            "OrionDeviceCapabilities",
+            "OrionReconciliationReport",
+        ):
+            if not hasattr(_orion_module, required):
+                orion_mod_ok = False
+                orion_mod_msg = f"Orion module missing '{required}'."
+                break
+    except Exception as e:
+        orion_mod_ok = False
+        orion_mod_msg = f"Failed to import Orion module: {e}"
+
+    checks.append(("Orion module", orion_mod_ok, orion_mod_msg))
+    if not orion_mod_ok:
+        critical_failure = True
+
+    # 29. Orion Event Bus Check
+    orion_bus_ok = True
+    orion_bus_msg: str | None = None
+    try:
+        from guardianmesh.orion.bus import BackpressureStrategy, OrionEventBus
+
+        bus = OrionEventBus(deterministic=True, max_queue_size=16)
+        if bus.handler_count() != 0 or bus.queue_size() != 0:
+            orion_bus_ok = False
+            orion_bus_msg = "Event bus initial state is wrong."
+        elif bus.metrics()["max_queue_size"] != 16:
+            orion_bus_ok = False
+            orion_bus_msg = "Event bus max_queue_size mismatch."
+        elif bus.metrics()["backpressure"] != BackpressureStrategy.DROP_OLDEST.value:
+            orion_bus_ok = False
+            orion_bus_msg = "Event bus default backpressure mismatch."
+    except Exception as e:
+        orion_bus_ok = False
+        orion_bus_msg = f"Event bus error: {e}"
+
+    checks.append(("Orion event bus", orion_bus_ok, orion_bus_msg))
+    if not orion_bus_ok:
+        critical_failure = True
+
+    # 30. Orion Action Queue Check
+    orion_queue_ok = True
+    orion_queue_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+            OrionActionType,
+        )
+        from guardianmesh.orion.queue import OrionActionQueue
+
+        if not db_ok:
+            orion_queue_ok = False
+            orion_queue_msg = "Database unavailable for Orion queue."
+        else:
+            queue = OrionActionQueue(db, max_size=1000)
+            now = datetime.datetime.now(datetime.UTC)
+            test_action = OrionAction(
+                action_id="OAC-DOCTOR-TEST",
+                action_type=OrionActionType.REQUEST_CAPABILITIES,
+                device_id="GM-C-19A84E72",
+                created_at=now.isoformat(),
+                expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+                correlation_id="OCR-DOCTOR-TEST",
+                requested_by="GM-P-83A1F72C",
+                status=OrionActionStatus.PENDING,
+            )
+            queue.enqueue(test_action)
+            fetched = queue.get("OAC-DOCTOR-TEST")
+            if fetched is None or fetched.action_type != OrionActionType.REQUEST_CAPABILITIES:
+                orion_queue_ok = False
+                orion_queue_msg = "Action queue round-trip failed."
+            else:
+                queue.mark_cancelled("OAC-DOCTOR-TEST")
+    except Exception as e:
+        orion_queue_ok = False
+        orion_queue_msg = f"Action queue error: {e}"
+
+    checks.append(("Orion action queue", orion_queue_ok, orion_queue_msg))
+    if not orion_queue_ok:
+        critical_failure = True
+
+    # 31. Orion Idempotency Store Check
+    orion_idemp_ok = True
+    orion_idemp_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+            OrionActionType,
+        )
+        from guardianmesh.orion.queue import OrionActionQueue
+
+        if not db_ok:
+            orion_idemp_ok = False
+            orion_idemp_msg = "Database unavailable for idempotency test."
+        else:
+            queue = OrionActionQueue(db, max_size=1000)
+            now = datetime.datetime.now(datetime.UTC)
+            a1 = OrionAction(
+                action_id="OAC-IDEMP-1",
+                action_type=OrionActionType.REQUEST_CAPABILITIES,
+                device_id="GM-C-19A84E72",
+                created_at=now.isoformat(),
+                expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+                correlation_id="OCR-IDEMP-1",
+                requested_by="GM-P-83A1F72C",
+                status=OrionActionStatus.PENDING,
+                idempotency_key="IDEMP-DOCTOR",
+            )
+            a2 = OrionAction(
+                action_id="OAC-IDEMP-2",
+                action_type=OrionActionType.REQUEST_CAPABILITIES,
+                device_id="GM-C-19A84E72",
+                created_at=now.isoformat(),
+                expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+                correlation_id="OCR-IDEMP-2",
+                requested_by="GM-P-83A1F72C",
+                status=OrionActionStatus.PENDING,
+                idempotency_key="IDEMP-DOCTOR",
+            )
+            first = queue.enqueue(a1)
+            second = queue.enqueue(a2)
+            if not (first is True and second is False):
+                orion_idemp_ok = False
+                orion_idemp_msg = "Idempotency check failed: duplicate should be rejected."
+            queue.mark_cancelled("OAC-IDEMP-1")
+    except Exception as e:
+        orion_idemp_ok = False
+        orion_idemp_msg = f"Idempotency store error: {e}"
+
+    checks.append(("Orion idempotency", orion_idemp_ok, orion_idemp_msg))
+    if not orion_idemp_ok:
+        critical_failure = True
+
+    # 32. Orion Reconciliation Engine Check
+    orion_recon_ok = True
+    orion_recon_msg: str | None = None
+    try:
+        from guardianmesh.orion.reconciliation import (
+            DEFAULT_STALENESS_SECONDS,
+            OrionStateReconciler,
+        )
+        from guardianmesh.orion.registry import OrionRegistry
+
+        if not db_ok:
+            orion_recon_ok = False
+            orion_recon_msg = "Database unavailable for reconciliation test."
+        else:
+            registry = OrionRegistry(db)
+            recon = OrionStateReconciler(registry=registry)
+            report = recon.reconcile("GM-C-19A84E72")
+            if not report.report_id.startswith("ORC-"):
+                orion_recon_ok = False
+                orion_recon_msg = "Reconciliation report_id format wrong."
+            elif report.completed_at is None:
+                orion_recon_ok = False
+                orion_recon_msg = "Reconciliation did not complete."
+            elif DEFAULT_STALENESS_SECONDS <= 0:
+                orion_recon_ok = False
+                orion_recon_msg = "Staleness threshold must be positive."
+    except Exception as e:
+        orion_recon_ok = False
+        orion_recon_msg = f"Reconciliation error: {e}"
+
+    checks.append(("Orion reconciliation", orion_recon_ok, orion_recon_msg))
+    if not orion_recon_ok:
+        critical_failure = True
+
+    # 33. Orion Capability Registry Check
+    orion_cap_ok = True
+    orion_cap_msg: str | None = None
+    try:
+        from guardianmesh.orion.capabilities import OrionCapabilityRegistry
+        from guardianmesh.orion.models import OrionCapability
+
+        orion_reg = OrionCapabilityRegistry()
+        if "ORION" not in orion_reg.device_ids():
+            orion_cap_ok = False
+            orion_cap_msg = "Control-plane profile missing."
+        else:
+            for cap in OrionCapability:
+                if cap.is_negative_default:
+                    if orion_reg.supports("ORION", cap):
+                        orion_cap_ok = False
+                        orion_cap_msg = f"Negative default '{cap.value}' is True."
+                        break
+    except Exception as e:
+        orion_cap_ok = False
+        orion_cap_msg = f"Capability registry error: {e}"
+
+    checks.append(("Orion capability registry", orion_cap_ok, orion_cap_msg))
+    if not orion_cap_ok:
+        critical_failure = True
+
+    # 34. Orion Database Schema Check
+    orion_schema_ok = True
+    orion_schema_msg: str | None = None
+    try:
+        if not db_ok:
+            orion_schema_ok = False
+            orion_schema_msg = "Database unavailable for Orion schema check."
+        else:
+            tables = [r[0] for r in db.fetchall(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'orion_%';"
+            )]
+            for required in (
+                "orion_events",
+                "orion_actions",
+                "orion_capabilities",
+                "orion_reconciliation",
+            ):
+                if required not in tables:
+                    orion_schema_ok = False
+                    orion_schema_msg = f"Missing Orion table: {required}"
+                    break
+    except Exception as e:
+        orion_schema_ok = False
+        orion_schema_msg = f"Orion schema check error: {e}"
+
+    checks.append(("Orion database schema", orion_schema_ok, orion_schema_msg))
+    if not orion_schema_ok:
+        critical_failure = True
+
+    # 35. Orion Audit Integration Check
+    orion_audit_ok = True
+    orion_audit_msg: str | None = None
+    try:
+        from guardianmesh.storage.audit import AuditEventType
+
+        required_orion_audits = (
+            "ORION_EVENT_ACCEPTED",
+            "ORION_EVENT_REJECTED",
+            "ORION_ACTION_CREATED",
+            "ORION_ACTION_STARTED",
+            "ORION_ACTION_COMPLETED",
+            "ORION_ACTION_FAILED",
+            "ORION_ACTION_EXPIRED",
+            "ORION_RECONCILIATION_STARTED",
+            "ORION_RECONCILIATION_COMPLETED",
+            "ORION_CONFLICT_RESOLVED",
+            "ORION_CAPABILITY_CHANGED",
+        )
+        for name in required_orion_audits:
+            if not hasattr(AuditEventType, name):
+                orion_audit_ok = False
+                orion_audit_msg = f"Missing audit event: {name}"
+                break
+    except Exception as e:
+        orion_audit_ok = False
+        orion_audit_msg = f"Orion audit check error: {e}"
+
+    checks.append(("Orion audit integration", orion_audit_ok, orion_audit_msg))
+    if not orion_audit_ok:
+        critical_failure = True
+
+    # 36. Orion Consent Integration Check
+    orion_consent_ok = True
+    orion_consent_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import OrionActionType
+        from guardianmesh.orion.consent import OrionConsentValidator
+
+        validator = OrionConsentValidator()
+        # An action with no consent requirements should validate cleanly.
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+        )
+
+        now = datetime.datetime.now(datetime.UTC)
+        safe_action = OrionAction(
+            action_id="OAC-CONSENT-DOCTOR",
+            action_type=OrionActionType.REQUEST_CAPABILITIES,
+            device_id="GM-C-19A84E72",
+            created_at=now.isoformat(),
+            expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+            correlation_id="OCR-CONSENT-DOCTOR",
+            requested_by="GM-P-83A1F72C",
+            status=OrionActionStatus.PENDING,
+        )
+        validator.validate(safe_action)  # should not raise
+    except Exception as e:
+        orion_consent_ok = False
+        orion_consent_msg = f"Consent integration error: {e}"
+
+    checks.append(("Orion consent integration", orion_consent_ok, orion_consent_msg))
+    if not orion_consent_ok:
+        critical_failure = True
+
+    # 37. Orion Offline Queue (persistent) Check
+    orion_offline_ok = True
+    orion_offline_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+            OrionActionType,
+        )
+        from guardianmesh.orion.queue import OrionActionQueue
+
+        if not db_ok:
+            orion_offline_ok = False
+            orion_offline_msg = "Database unavailable for offline queue test."
+        else:
+            queue = OrionActionQueue(db, max_size=1000)
+            now = datetime.datetime.now(datetime.UTC)
+            action = OrionAction(
+                action_id="OAC-OFFLINE-1",
+                action_type=OrionActionType.REQUEST_CAPABILITIES,
+                device_id="GM-C-19A84E72",
+                created_at=now.isoformat(),
+                expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+                correlation_id="OCR-OFFLINE-1",
+                requested_by="GM-P-83A1F72C",
+                status=OrionActionStatus.PENDING,
+            )
+            queue.enqueue(action)
+            # Force a re-read from a fresh queue instance.
+            queue2 = OrionActionQueue(db, max_size=1000)
+            fetched = queue2.get("OAC-OFFLINE-1")
+            if fetched is None:
+                orion_offline_ok = False
+                orion_offline_msg = "Persistent queue lost action after reopen."
+            queue.mark_cancelled("OAC-OFFLINE-1")
+    except Exception as e:
+        orion_offline_ok = False
+        orion_offline_msg = f"Offline queue error: {e}"
+
+    checks.append(("Orion offline queue", orion_offline_ok, orion_offline_msg))
+    if not orion_offline_ok:
+        critical_failure = True
+
+    # 38. Orion Handler Registry Check
+    orion_handlers_ok = True
+    orion_handlers_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import OrionActionType
+        from guardianmesh.orion.handlers import OrionActionHandlers
+
+        handlers = OrionActionHandlers()
+        # Every action type must have a handler entry in the dispatch map.
+        # We can verify by passing a known-safe action and checking the
+        # right error path is taken.
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+        )
+
+        now = datetime.datetime.now(datetime.UTC)
+        action = OrionAction(
+            action_id="OAC-HANDLER-DOCTOR",
+            action_type=OrionActionType.REQUEST_CAPABILITIES,
+            device_id="GM-C-19A84E72",
+            created_at=now.isoformat(),
+            expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+            correlation_id="OCR-HANDLER-DOCTOR",
+            requested_by="GM-P-83A1F72C",
+            status=OrionActionStatus.PENDING,
+        )
+        try:
+            handlers.execute(action)
+            # Should not raise — but it may if no registry configured.
+            # The doctor only checks that the handler dispatch map is
+            # populated.
+        except Exception as exc:
+            # Acceptable: missing registry is a configuration concern.
+            if "CapabilityRegistry not configured" not in str(exc):
+                # Some other error — the handler map is broken.
+                orion_handlers_ok = False
+                orion_handlers_msg = f"Handler dispatch error: {exc}"
+    except Exception as e:
+        orion_handlers_ok = False
+        orion_handlers_msg = f"Handler registry error: {e}"
+
+    checks.append(("Orion handler registry", orion_handlers_ok, orion_handlers_msg))
+    if not orion_handlers_ok:
+        critical_failure = True
+
+    # 39. Atlas Module Check (Phase 10)
+    atlas_mod_ok = True
+    atlas_mod_msg: str | None = None
+    try:
+        import guardianmesh.atlas as _atlas_module
+
+        for required in (
+            "AtlasController",
+            "AtlasBackupManager",
+            "AtlasRestoreManager",
+            "AtlasRecoveryManager",
+            "AtlasIntegrityVerifier",
+            "AtlasLifecycleValidator",
+            "AtlasHealthMonitor",
+            "AtlasDiagnostics",
+            "AtlasObservability",
+            "AtlasMetrics",
+            "AtlasRetentionManager",
+            "AtlasReleaseValidator",
+            "AtlasCompatibilityChecker",
+            "AtlasCapabilityRegistry",
+        ):
+            if not hasattr(_atlas_module, required):
+                atlas_mod_ok = False
+                atlas_mod_msg = f"Atlas module missing '{required}'."
+                break
+    except Exception as e:
+        atlas_mod_ok = False
+        atlas_mod_msg = f"Failed to import Atlas module: {e}"
+
+    checks.append(("Atlas module", atlas_mod_ok, atlas_mod_msg))
+    if not atlas_mod_ok:
+        critical_failure = True
+
+    # 40. Atlas Database Schema Check (Phase 10)
+    atlas_schema_ok = True
+    atlas_schema_msg: str | None = None
+    try:
+        if not db_ok:
+            atlas_schema_ok = False
+            atlas_schema_msg = "Database unavailable for Atlas schema check."
+        else:
+            tables = [
+                r[0]
+                for r in db.fetchall(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name LIKE 'atlas_%';"
+                )
+            ]
+            for required in (
+                "atlas_backups",
+                "atlas_health",
+                "atlas_recovery",
+                "atlas_capability_versions",
+                "atlas_retention",
+            ):
+                if required not in tables:
+                    atlas_schema_ok = False
+                    atlas_schema_msg = f"Missing Atlas table: {required}"
+                    break
+    except Exception as e:
+        atlas_schema_ok = False
+        atlas_schema_msg = f"Atlas schema check error: {e}"
+
+    checks.append(("Atlas database schema", atlas_schema_ok, atlas_schema_msg))
+    if not atlas_schema_ok:
+        critical_failure = True
+
+    # 41. Atlas Capability Registry Check
+    atlas_cap_ok = True
+    atlas_cap_msg: str | None = None
+    try:
+        from guardianmesh.atlas.capabilities import (
+            DEFAULT_ATLAS_CAPABILITIES,
+        )
+
+        if len(DEFAULT_ATLAS_CAPABILITIES) < 1:
+            atlas_cap_ok = False
+            atlas_cap_msg = "Atlas capability registry is empty."
+    except Exception as e:
+        atlas_cap_ok = False
+        atlas_cap_msg = f"Atlas capability check error: {e}"
+
+    checks.append(("Atlas capability registry", atlas_cap_ok, atlas_cap_msg))
+    if not atlas_cap_ok:
+        critical_failure = True
+
+    # 42. Atlas Migration State Check
+    atlas_mig_ok = True
+    atlas_mig_msg: str | None = None
+    try:
+        current_v = MigrationManager().get_current_version(db)
+        if current_v < 10:
+            atlas_mig_ok = False
+            atlas_mig_msg = f"Database at v{current_v}; Atlas requires v10."
+    except Exception as e:
+        atlas_mig_ok = False
+        atlas_mig_msg = f"Atlas migration check error: {e}"
+
+    checks.append(("Atlas migration state", atlas_mig_ok, atlas_mig_msg))
+    if not atlas_mig_ok:
+        critical_failure = True
+
+    # 43. Atlas Backup Subsystem Check
+    atlas_backup_ok = True
+    atlas_backup_msg: str | None = None
+    try:
+        from pathlib import Path
+
+        from guardianmesh.atlas.backup import AtlasBackupManager
+
+        Path(config.data_dir / "atlas_backups").mkdir(parents=True, exist_ok=True)
+        atlas_backup_mgr = AtlasBackupManager(
+            db,
+            config.data_dir / "atlas_backups",
+            orion_version="1.0.0",
+        )
+        atlas_info = atlas_backup_mgr.create_backup()
+        ok, _msg = atlas_backup_mgr.verify_backup(atlas_info.backup_id)
+        if not ok:
+            atlas_backup_ok = False
+            atlas_backup_msg = "Atlas backup verification failed."
+    except Exception as e:
+        atlas_backup_ok = False
+        atlas_backup_msg = f"Atlas backup error: {e}"
+
+    checks.append(("Atlas backup subsystem", atlas_backup_ok, atlas_backup_msg))
+    if not atlas_backup_ok:
+        critical_failure = True
+
+    # 44. Atlas Recovery Subsystem Check
+    atlas_rec_ok = True
+    atlas_rec_msg: str | None = None
+    try:
+        from guardianmesh.atlas.recovery import AtlasRecoveryManager
+
+        records = AtlasRecoveryManager(db).recover_all()
+        for r in records:
+            if r.status not in ("SUCCEEDED",):
+                atlas_rec_ok = False
+                atlas_rec_msg = f"Recovery {r.operation} returned {r.status}."
+                break
+    except Exception as e:
+        atlas_rec_ok = False
+        atlas_rec_msg = f"Atlas recovery error: {e}"
+
+    checks.append(("Atlas recovery subsystem", atlas_rec_ok, atlas_rec_msg))
+    if not atlas_rec_ok:
+        critical_failure = True
+
+    # 45. Atlas Integrity Verifier Check
+    atlas_int_ok = True
+    atlas_int_msg: str | None = None
+    try:
+        from guardianmesh.atlas.integrity import AtlasIntegrityVerifier
+
+        for c in AtlasIntegrityVerifier(db).run_all():
+            if not c.ok:
+                atlas_int_ok = False
+                atlas_int_msg = f"Integrity check failed: {c.name} ({c.reason})"
+                break
+    except Exception as e:
+        atlas_int_ok = False
+        atlas_int_msg = f"Atlas integrity error: {e}"
+
+    checks.append(("Atlas integrity verifier", atlas_int_ok, atlas_int_msg))
+    if not atlas_int_ok:
+        critical_failure = True
+
+    # 46. Atlas Observability Check
+    atlas_obs_ok = True
+    atlas_obs_msg: str | None = None
+    try:
+        from guardianmesh.atlas.observability import AtlasObservability
+
+        metrics = AtlasObservability(db).collect()
+        for sub_info in metrics.values():
+            if not isinstance(sub_info, dict):
+                continue
+    except Exception as e:
+        atlas_obs_ok = False
+        atlas_obs_msg = f"Atlas observability error: {e}"
+
+    checks.append(("Atlas observability", atlas_obs_ok, atlas_obs_msg))
+    if not atlas_obs_ok:
+        critical_failure = True
+
+    # 47. Atlas Release Validation Check
+    atlas_rel_ok = True
+    atlas_rel_msg: str | None = None
+    try:
+        from guardianmesh.atlas.release import AtlasReleaseValidator
+
+        for c in AtlasReleaseValidator(db).basic_checks():
+            if not c.ok:
+                atlas_rel_ok = False
+                atlas_rel_msg = f"Release check failed: {c.name} ({c.reason})"
+                break
+    except Exception as e:
+        atlas_rel_ok = False
+        atlas_rel_msg = f"Atlas release check error: {e}"
+
+    checks.append(("Atlas release validation", atlas_rel_ok, atlas_rel_msg))
+    if not atlas_rel_ok:
+        critical_failure = True
+
     # Output formatted results
     for name, ok, reason in checks:
         indicator = "✓" if ok else "✗"
@@ -1966,4 +2964,973 @@ def cmd_transport(args: argparse.Namespace, config: GuardianConfig) -> int:
             print("State:           CONNECTED")
         return 0
 
+    return 0
+
+
+def _ensure_screen_db(config: GuardianConfig) -> Database:
+    """Open (and migrate) the GuardianMesh database for screen commands."""
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    return db
+
+
+def _build_screen_controller(
+    config: GuardianConfig,
+) -> tuple[Database, str | None, Any]:
+    """Build a :class:`ScreenController` wired to the local database."""
+    from guardianmesh.screen.controller import ScreenController
+
+    db = _ensure_screen_db(config)
+    key_storage = KeyStorageManager(config.keys_dir)
+    identity_mgr = IdentityManager(db, key_storage)
+    audit_logger = AuditLogger(db)
+    trust_mgr = TrustManager(db, audit_logger)
+    active_identity = identity_mgr.get_active_identity()
+    if active_identity is None:
+        return db, None, None
+    controller = ScreenController(
+        db=db,
+        config=config,
+        trust_manager=trust_mgr,
+        audit_logger=audit_logger,
+    )
+    return db, active_identity.id, controller
+
+
+def _format_screen_status_text(data: dict[str, Any]) -> str:
+    """Render a metadata-only screen status block."""
+    lines = ["GuardianMesh Vista", "=" * 32]
+    lines.append(f"{'DEVICE':<14} {data.get('device_id', '-')}")
+    lines.append(f"{'SESSION':<14} {data.get('session_id', '-')}")
+    lines.append(f"{'STATE':<14} {data.get('state', '-')}")
+    lines.append(f"{'AUTHORIZATION':<14} {data.get('authorization', '-')}")
+    lines.append(f"{'CONNECTION':<14} {data.get('connection', '-')}")
+    lines.append(f"{'FRAME RATE':<14} {data.get('frame_rate', '-')}")
+    lines.append(f"{'RESOLUTION':<14} {data.get('resolution', '-')}")
+    lines.append(f"{'LATENCY':<14} {data.get('latency', '-')}")
+    lines.append(f"{'REMAINING':<14} {data.get('remaining', '-')}")
+    lines.append(f"{'STATUS':<14} {data.get('status', '-')}")
+    return "\n".join(lines)
+
+
+def cmd_screen(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Manage view-only, consent-based screen sessions (Phase 7: Vista)."""
+    subcmd = getattr(args, "screen_action", None) or "status"
+    format_json = getattr(args, "json", False) is True
+
+    db, active_id, controller = _build_screen_controller(config)
+    if active_id is None or controller is None:
+        if format_json:
+            print(json.dumps({"error": "No active identity. Run 'guardian init' first."}, indent=2))
+        else:
+            print("Error: No active identity. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+
+    from guardianmesh.screen.controller import ScreenViewRequest
+    from guardianmesh.screen.models import StopReason
+    from guardianmesh.screen.registry import ScreenSessionRegistry
+
+    if subcmd == "status":
+        device_id = getattr(args, "device_id", None)
+        registry = ScreenSessionRegistry(db)
+        from guardianmesh.screen.session import ScreenSession as _ScreenSession
+
+        if device_id:
+            sessions = registry.list_for_device(device_id)
+        else:
+            sessions = controller.session_manager.list_all()
+        # Also include sessions from the database that are not in memory.
+        if not device_id:
+            for s in registry.list_all(limit=200):
+                if controller.session_manager.get(s.session_id) is None:
+                    sessions.append(s)
+        if format_json:
+            payload = {
+                "active_identity": active_id,
+                "sessions": [
+                    (s.info.to_dict() if isinstance(s, _ScreenSession) else s.to_dict())
+                    for s in sessions
+                ],
+            }
+            print(json.dumps(payload, indent=2))
+            return 0
+
+        print("GuardianMesh Vista")
+        print_divider()
+        if not sessions:
+            print("No screen sessions.")
+            return 0
+
+        from guardianmesh.screen.session import ScreenSession
+
+        for sess_obj in sessions:
+            if isinstance(sess_obj, ScreenSession):
+                info = sess_obj.info
+            else:
+                info = sess_obj
+            data = {
+                "device_id": info.device_id,
+                "session_id": info.session_id,
+                "state": info.state.value,
+                "authorization": "APPROVED" if info.approved_at else "PENDING",
+                "connection": "TRANSPORT_READY" if info.transport_session_id else "NO_TRANSPORT",
+                "frame_rate": f"{info.max_fps} FPS",
+                "resolution": f"{info.width}x{info.height}",
+                "latency": "n/a (adapter only)",
+                "remaining": f"{info.remaining_seconds // 60:02d}:{info.remaining_seconds % 60:02d}",
+                "status": "STOPPED" if info.is_terminal else "OK",
+            }
+            print(_format_screen_status_text(data))
+            print_divider()
+        return 0
+
+    if subcmd == "request":
+        device_id = getattr(args, "device_id", None)
+        if not device_id:
+            print("Usage: guardian screen request <device_id>")
+            return 1
+        duration = int(getattr(args, "duration", config.screen_view_default_max_duration_seconds) or 0)
+        if duration <= 0:
+            duration = config.screen_view_default_max_duration_seconds
+        duration = min(duration, config.screen_view_max_duration_seconds)
+        try:
+            req = ScreenViewRequest(
+                device_id=device_id,
+                parent_id=active_id,
+                max_duration_seconds=duration,
+                label=getattr(args, "label", None),
+                width=config.screen_view_default_width,
+                height=config.screen_view_default_height,
+                max_fps=config.screen_view_default_fps,
+            )
+            session = controller.request_view(req)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "REQUESTED", "session": session.info.to_dict()}, indent=2))
+        else:
+            print("Screen view requested.")
+            print_divider()
+            print(f"Session ID: {session.session_id}")
+            print(f"Device:     {session.info.device_id}")
+            print(f"State:      {session.info.state.value}")
+            print(f"Duration:   {session.info.expires_at}")
+            print()
+            print("Awaiting child-side authorization...")
+        return 0
+
+    if subcmd == "approve":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen approve <session_id>")
+            return 1
+        try:
+            controller.rehydrate_session(session_id)
+            session = controller.approve(session_id)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "APPROVED", "session": session.info.to_dict()}, indent=2))
+        else:
+            print(f"Session '{session_id}' APPROVED.")
+        return 0
+
+    if subcmd == "deny":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen deny <session_id>")
+            return 1
+        try:
+            controller.rehydrate_session(session_id)
+            session = controller.deny(session_id)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "DENIED", "session": session.info.to_dict()}, indent=2))
+        else:
+            print(f"Session '{session_id}' DENIED.")
+        return 0
+
+    if subcmd == "start":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen start <session_id>")
+            return 1
+        try:
+            controller.rehydrate_session(session_id)
+            session = controller.start_session(session_id)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "ACTIVE", "session": session.info.to_dict()}, indent=2))
+        else:
+            print(f"Session '{session_id}' is now ACTIVE.")
+            print("The child-side visible indicator is now displayed.")
+        return 0
+
+    if subcmd == "stop":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen stop <device_id|session_id>")
+            return 1
+        controller.rehydrate_session(session_id)
+        sess_obj = controller.session_manager.get(session_id)
+        if sess_obj is None:
+            registry = ScreenSessionRegistry(db)
+            rec = registry.get(session_id)
+            if rec is not None:
+                if format_json:
+                    print(json.dumps(rec.to_dict(), indent=2))
+                else:
+                    print(f"Session '{session_id}' is in state {rec.state.value}.")
+                return 0
+            print(f"Screen session '{session_id}' not found.", file=sys.stderr)
+            return 1
+        try:
+            session = controller.stop_session(session_id, reason=StopReason.PARENT_STOPPED)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "STOPPED", "session": session.info.to_dict()}, indent=2))
+        else:
+            print(f"Screen session '{session_id}' stopped.")
+        return 0
+
+    if subcmd == "view":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen view <session_id>")
+            return 1
+        controller.rehydrate_session(session_id)
+        sess_obj = controller.session_manager.get(session_id)
+        if sess_obj is None:
+            print(f"Active screen session '{session_id}' not found.", file=sys.stderr)
+            return 1
+        if format_json:
+            # Never include any frame payloads — only metadata.
+            print(json.dumps(sess_obj.summary(), indent=2))
+        else:
+            print("GuardianMesh Vista — Live Session View")
+            print_divider()
+            print("NOTE: Terminal video decoding is not implemented in this build.")
+            print("A future Android companion component is required to render real")
+            print("captured frames on the parent side. This command shows the live")
+            print("session metadata so the parent can confirm an active session.")
+            print()
+            info = sess_obj.info
+            print(f"{'Session':<14} {info.session_id}")
+            print(f"{'State':<14} {info.state.value}")
+            print(f"{'Device':<14} {info.device_id}")
+            print(f"{'Codec':<14} {info.codec.value}")
+            print(f"{'Resolution':<14} {info.width}x{info.height}")
+            print(f"{'Max FPS':<14} {info.max_fps}")
+            print(f"{'Frames':<14} {info.frame_count}")
+            print(f"{'Bytes sent':<14} {info.bytes_sent}")
+            print(f"{'Remaining':<14} {info.remaining_seconds}s")
+            print()
+            print("Child-side visible indicator:")
+            for line in sess_obj.indicator.render().splitlines():
+                print(line)
+        return 0
+
+    if subcmd == "list":
+        registry = ScreenSessionRegistry(db)
+        all_sess = registry.list_all(limit=50)
+        if format_json:
+            print(json.dumps({"sessions": [s.to_dict() for s in all_sess]}, indent=2))
+            return 0
+        if not all_sess:
+            print("No screen sessions recorded.")
+            return 0
+        print("GuardianMesh Vista — Sessions")
+        print_divider()
+        print(f"{'SESSION':<20} {'DEVICE':<15} {'STATE':<22} {'REQUESTED'}")
+        print_divider(width=72)
+        for s in all_sess:
+            print(f"{s.session_id:<20} {s.device_id:<15} {s.state.value:<22} {s.requested_at[:19]}")
+        return 0
+
+    if subcmd == "diagnostics":
+        diag = controller.diagnostics()
+        if format_json:
+            print(json.dumps(diag.to_dict(), indent=2))
+        else:
+            print("GuardianMesh Vista — Diagnostics")
+            print_divider()
+            for k, v in diag.to_dict().items():
+                print(f"{k:<26} {v}")
+        return 0
+
+    if subcmd == "providers":
+        from guardianmesh.aegis.controller import AegisController
+
+        aegis = AegisController(db=db, config=config)
+        providers = aegis.list_providers()
+        if format_json:
+            print(json.dumps({"providers": providers}, indent=2))
+        else:
+            print("GuardianMesh Aegis — Capture Providers")
+            print_divider()
+            for p in providers:
+                print(
+                    f"{p['class']:<40} real_capture={p['is_real_capture']} "
+                    f"platform={p['capability']['platform']}"
+                )
+        return 0
+
+    if subcmd == "limits":
+        from guardianmesh.aegis.controller import AegisController
+
+        aegis = AegisController(db=db, config=config)
+        limits = aegis.list_limits()
+        if format_json:
+            print(json.dumps({"limits": limits}, indent=2))
+        else:
+            print("GuardianMesh Aegis — Hard Limits")
+            print_divider()
+            for k, v in limits.items():
+                print(f"{k:<32} {v}")
+        return 0
+
+    # Default fallback: print status
+    print(
+        "Usage: guardian screen [status|request|approve|deny|start|stop|"
+        "view|list|diagnostics|providers|limits]"
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 9: Orion orchestration
+# ---------------------------------------------------------------------------
+
+
+def _build_orion_coordinator(
+    config: GuardianConfig,
+) -> tuple[Database | None, Any | None, str | None]:
+    """Build a :class:`OrionCoordinator` wired to the local database."""
+    from guardianmesh.orion.coordinator import OrionCoordinator
+
+    if not config.database_path.is_file():
+        return None, None, None
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    key_storage = KeyStorageManager(config.keys_dir)
+    identity_mgr = IdentityManager(db, key_storage)
+    active_identity = identity_mgr.get_active_identity()
+    if active_identity is None:
+        return db, None, None
+    trust_mgr = TrustManager(db)
+    audit_logger = AuditLogger(db)
+    coord = OrionCoordinator(
+        db=db,
+        audit_logger=audit_logger,
+        trust_manager=trust_mgr,
+    )
+    return db, coord, active_identity.id
+
+
+def cmd_orchestrate(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Phase 9: Orion orchestration subcommand.
+
+    Subcommands: status, events, actions, action, retry, cancel,
+    reconcile, capabilities.
+    """
+    subcmd = getattr(args, "orchestrate_action", None) or "status"
+    format_json = getattr(args, "json", False) is True
+
+    db, coord, active_id = _build_orion_coordinator(config)
+    if db is None:
+        if format_json:
+            print(json.dumps({"error": "Database not initialized. Run 'guardian init' first."}, indent=2))
+        else:
+            print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+    if coord is None or active_id is None:
+        if format_json:
+            print(json.dumps({"error": "No active identity. Run 'guardian init' first."}, indent=2))
+        else:
+            print("Error: No active identity. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+
+    from guardianmesh.orion.actions import OrionActionStatus
+
+    if subcmd == "status":
+        metrics = coord.metrics()
+        queue_metrics = coord.queue.metrics()
+        bus_metrics = coord.bus.metrics()
+        cap_metrics = coord.capabilities.metrics()
+        registry_metrics = coord.registry.metrics()
+
+        status_payload = {
+            "running": metrics.get("running", False),
+            "queue": {
+                "total": queue_metrics.get("total", 0),
+                "by_status": queue_metrics.get("by_status", {}),
+                "max_size": queue_metrics.get("max_size", 0),
+            },
+            "bus": {
+                "queue_size": bus_metrics.get("queue_size", 0),
+                "processed_count": bus_metrics.get("processed_count", 0),
+                "dropped_count": bus_metrics.get("dropped_count", 0),
+                "failed_count": bus_metrics.get("failed_count", 0),
+            },
+            "capabilities": cap_metrics,
+            "registry": {
+                "events": registry_metrics.get("orion_events.count", 0),
+                "actions": registry_metrics.get("orion_actions.count", 0),
+                "capabilities_records": registry_metrics.get("orion_capabilities.count", 0),
+                "reconciliations": registry_metrics.get("orion_reconciliation.count", 0),
+            },
+        }
+        if format_json:
+            print(json.dumps(status_payload, indent=2))
+            return 0
+
+        print("GuardianMesh Orion")
+        print_divider()
+        print(f"{'Running':<14} {'YES' if status_payload['running'] else 'no'}")
+        print()
+        print("Event Bus:")
+        print(f"  {'Queue size':<14} {status_payload['bus']['queue_size']}")
+        print(f"  {'Processed':<14} {status_payload['bus']['processed_count']}")
+        print(f"  {'Dropped':<14} {status_payload['bus']['dropped_count']}")
+        print(f"  {'Failed':<14} {status_payload['bus']['failed_count']}")
+        print()
+        print("Action Queue:")
+        print(f"  {'Total':<14} {status_payload['queue']['total']}")
+        for st, cnt in status_payload["queue"]["by_status"].items():
+            print(f"  {st:<14} {cnt}")
+        print()
+        print("Capabilities:")
+        print(f"  {'Devices':<14} {status_payload['capabilities']['device_count']}")
+        print()
+        print("Registry:")
+        for k, v in status_payload["registry"].items():
+            print(f"  {k:<22} {v}")
+        return 0
+
+    elif subcmd == "events":
+        device_id = getattr(args, "device", None)
+        limit = getattr(args, "limit", 50) or 50
+        events = coord.registry.list_events(device_id=device_id, limit=limit)
+        if format_json:
+            print(json.dumps({"events": [e.to_dict() for e in events]}, indent=2))
+            return 0
+        if not events:
+            print("No Orion events recorded.")
+            return 0
+        print("Orion Events")
+        print_divider(width=72)
+        print(f"{'EVENT ID':<18} {'TYPE':<28} {'DEVICE':<14} {'SOURCE':<14}")
+        print_divider(width=72)
+        for ev in events:
+            print(
+                f"{ev.event_id:<18} {ev.event_type.value:<28} "
+                f"{ev.device_id:<14} {ev.source:<14}"
+            )
+        return 0
+
+    elif subcmd == "actions":
+        status_filter = getattr(args, "status", None)
+        device_id = getattr(args, "device", None)
+        limit = getattr(args, "limit", 50) or 50
+        if status_filter:
+            actions = coord.queue.list_by_status(status_filter, device_id=device_id, limit=limit)
+        else:
+            actions = coord.queue.list_all(limit=limit)
+        if format_json:
+            print(json.dumps({"actions": [a.to_dict() for a in actions]}, indent=2))
+            return 0
+        if not actions:
+            print("No Orion actions queued.")
+            return 0
+        print("Orion Actions")
+        print_divider(width=76)
+        print(f"{'ACTION ID':<18} {'TYPE':<26} {'STATUS':<12} {'DEVICE':<14}")
+        print_divider(width=76)
+        for a in actions:
+            print(
+                f"{a.action_id:<18} {a.action_type.value:<26} "
+                f"{a.status.value:<12} {a.device_id:<14}"
+            )
+        return 0
+
+    elif subcmd == "action":
+        action_id = getattr(args, "action_id", None)
+        if not action_id:
+            print("Usage: guardian orchestrate action <action_id>")
+            return 1
+        action = coord.queue.get(action_id)
+        if not action:
+            if format_json:
+                print(json.dumps({"error": f"Action '{action_id}' not found."}, indent=2))
+            else:
+                print(f"Action '{action_id}' not found.", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps(action.to_dict(), indent=2))
+            return 0
+        print(f"Orion Action: {action.action_id}")
+        print_divider()
+        print(f"{'Type':<14} {action.action_type.value}")
+        print(f"{'Status':<14} {action.status.value}")
+        print(f"{'Device':<14} {action.device_id}")
+        print(f"{'Requested by':<14} {action.requested_by}")
+        print(f"{'Created at':<14} {action.created_at}")
+        print(f"{'Expires at':<14} {action.expires_at}")
+        print(f"{'Correlation':<14} {action.correlation_id}")
+        if action.idempotency_key:
+            print(f"{'Idempotency':<14} {action.idempotency_key}")
+        if action.retry_count:
+            print(f"{'Retry count':<14} {action.retry_count}/{action.max_retries}")
+        if action.last_error:
+            print(f"{'Last error':<14} {action.last_error}")
+        return 0
+
+    elif subcmd == "retry":
+        action_id = getattr(args, "action_id", None)
+        if not action_id:
+            print("Usage: guardian orchestrate retry <action_id>")
+            return 1
+        action = coord.queue.get(action_id)
+        if not action:
+            if format_json:
+                print(json.dumps({"error": f"Action '{action_id}' not found."}, indent=2))
+            else:
+                print(f"Action '{action_id}' not found.", file=sys.stderr)
+            return 1
+        coord.queue.mark_running(action_id)
+        print(f"Action '{action_id}' retried.")
+        return 0
+
+    elif subcmd == "cancel":
+        action_id = getattr(args, "action_id", None)
+        if not action_id:
+            print("Usage: guardian orchestrate cancel <action_id>")
+            return 1
+        action = coord.queue.get(action_id)
+        if not action:
+            if format_json:
+                print(json.dumps({"error": f"Action '{action_id}' not found."}, indent=2))
+            else:
+                print(f"Action '{action_id}' not found.", file=sys.stderr)
+            return 1
+        if action.status in (
+            OrionActionStatus.SUCCEEDED,
+            OrionActionStatus.CANCELLED,
+            OrionActionStatus.EXPIRED,
+        ):
+            if format_json:
+                print(
+                    json.dumps(
+                        {"error": f"Action '{action_id}' is in terminal state {action.status.value}."},
+                        indent=2,
+                    )
+                )
+            else:
+                print(
+                    f"Action '{action_id}' is in terminal state {action.status.value}; cannot cancel.",
+                    file=sys.stderr,
+                )
+            return 1
+        coord.queue.mark_cancelled(action_id)
+        print(f"Action '{action_id}' CANCELLED.")
+        return 0
+
+    elif subcmd == "reconcile":
+        device_id = getattr(args, "device_id", None)
+        if not device_id:
+            print("Usage: guardian orchestrate reconcile <device_id>")
+            return 1
+        report = coord.reconcile(device_id)
+        if format_json:
+            print(json.dumps(report.to_dict(), indent=2))
+            return 0
+        print(f"Orion Reconciliation: {report.report_id}")
+        print_divider()
+        print(f"{'Device':<14} {report.device_id}")
+        print(f"{'Started':<14} {report.started_at}")
+        print(f"{'Completed':<14} {report.completed_at or '-'}")
+        print(f"{'Final state':<14} {report.final_state}")
+        print(f"{'Events':<14} {report.events_processed}")
+        print(f"{'Conflicts':<14} {report.conflicts_detected} / {report.conflicts_resolved} resolved")
+        print(f"{'Stale':<14} {report.stale_events}")
+        print(f"{'Failed':<14} {report.failed_actions}")
+        return 0
+
+    elif subcmd == "capabilities":
+        target_device = getattr(args, "device_id", None)
+        if not target_device:
+            # List all devices with capabilities.
+            all_caps = coord.capabilities.all()
+            if format_json:
+                print(
+                    json.dumps(
+                        {"capabilities": [c.to_dict() for c in all_caps]},
+                        indent=2,
+                    )
+                )
+                return 0
+            if not all_caps:
+                print("No devices with recorded capabilities.")
+                return 0
+            print("Orion Device Capabilities")
+            print_divider()
+            for c in all_caps:
+                positive = c.positive_capabilities()
+                print(f"  {c.device_id}")
+                for cap in positive:
+                    print(f"    • {cap.value}")
+            return 0
+        caps = coord.capabilities.get(target_device)
+        if not caps:
+            if format_json:
+                print(
+                    json.dumps(
+                        {"error": f"No capabilities recorded for '{target_device}'."},
+                        indent=2,
+                    )
+                )
+            else:
+                print(f"No capabilities recorded for '{target_device}'.", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps(caps.to_dict(), indent=2))
+            return 0
+        print(f"Orion Capabilities: {caps.device_id}")
+        print_divider()
+        print(f"{'Source':<14} {caps.source}")
+        if caps.notes:
+            print(f"{'Notes':<14} {caps.notes}")
+        print(f"{'Discovered':<14} {caps.discovered_at}")
+        print()
+        print("Positive (allowed):")
+        for cap in caps.positive_capabilities():
+            print(f"  • {cap.value}")
+        print()
+        print("Negative (always False):")
+        for cap in caps.negative_capabilities():
+            print(f"  • {cap.value}")
+        return 0
+
+    print(
+        "Usage: guardian orchestrate [status|events|actions|action|retry|cancel|reconcile|capabilities]"
+    )
+    return 0
+
+
+def cmd_capabilities(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Show Orion capabilities for a specific device (shorthand)."""
+    device_id = getattr(args, "device_id", None)
+    if not device_id:
+        print("Usage: guardian capabilities <device_id>")
+        return 1
+
+    db, coord, active_id = _build_orion_coordinator(config)
+    if db is None or coord is None:
+        print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+
+    caps = coord.capabilities.get(device_id)
+    if not caps:
+        print(f"No capabilities recorded for '{device_id}'.", file=sys.stderr)
+        return 1
+    format_json = getattr(args, "json", False) is True
+    if format_json:
+        print(json.dumps(caps.to_dict(), indent=2))
+        return 0
+    print(f"Orion Capabilities: {caps.device_id}")
+    print_divider()
+    print(f"{'Source':<14} {caps.source}")
+    print(f"{'Discovered':<14} {caps.discovered_at}")
+    print()
+    print("Positive (allowed):")
+    for cap in caps.positive_capabilities():
+        print(f"  • {cap.value}")
+    print()
+    print("Negative (always False):")
+    for cap in caps.negative_capabilities():
+        print(f"  • {cap.value}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 10: Atlas production platform
+# ---------------------------------------------------------------------------
+
+
+def _build_atlas_controller(
+    config: GuardianConfig, *, backup_dir: str | None = None
+) -> tuple[Database | None, Any | None, str | None]:
+    """Build an :class:`AtlasController` wired to the local database."""
+    from guardianmesh.atlas.controller import AtlasController
+
+    if not config.database_path.is_file():
+        return None, None, None
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    if backup_dir is None:
+        backup_dir = str(config.data_dir / "atlas_backups")
+    from pathlib import Path
+
+    Path(backup_dir).mkdir(parents=True, exist_ok=True)
+    controller = AtlasController(
+        db,
+        orion_version=__version__,
+        schema_version="10",
+        backup_dir=backup_dir,
+    )
+    return db, controller, backup_dir
+
+
+def cmd_atlas(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Phase 10: Atlas production platform subcommand.
+
+    Subcommands: status, backup, restore, recover, retention,
+    health, capabilities, version.
+    """
+    subcmd = getattr(args, "atlas_action", None) or "status"
+    format_json = getattr(args, "json", False) is True
+
+    db, controller, _backup_dir = _build_atlas_controller(config)
+    if db is None or controller is None:
+        if format_json:
+            print(json.dumps({"error": "Database not initialized."}, indent=2))
+        else:
+            print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+
+    if subcmd == "status":
+        m = controller.collect_observability()
+        if format_json:
+            print(json.dumps(m, indent=2, default=str))
+            return 0
+        print("GuardianMesh Atlas")
+        print_divider()
+        for subsystem, info in m.items():
+            if isinstance(info, dict):
+                counts = ", ".join(
+                    f"{k}={v}" for k, v in info.items() if isinstance(v, (int, float, str))
+                )
+                print(f"  {subsystem:<12} {counts}")
+        return 0
+
+    elif subcmd == "backup":
+        device_id = getattr(args, "device_id", None)
+        info = controller.backup(device_id=device_id)
+        if format_json:
+            print(json.dumps(info, indent=2, default=str))
+            return 0
+        print("Atlas Backup Created")
+        print_divider()
+        for k, v in info.items():
+            print(f"  {k:<14} {v}")
+        return 0
+
+    elif subcmd == "restore":
+        backup_id = getattr(args, "backup_id", None)
+        dry_run = getattr(args, "dry_run", True)
+        if not backup_id:
+            print("Usage: guardian atlas restore <backup_id> [--dry-run]")
+            return 1
+        try:
+            plan = controller.restore(backup_id, dry_run=dry_run)
+        except Exception as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Restore failed: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps(plan, indent=2, default=str))
+            return 0
+        print(f"Atlas Restore {'Plan' if plan.get('dry_run') else 'Applied'}")
+        print_divider()
+        for k, v in plan.items():
+            if isinstance(v, (dict, list)):
+                continue
+            print(f"  {k:<14} {v}")
+        return 0
+
+    elif subcmd == "recover":
+        records = controller.recover()
+        if format_json:
+            print(json.dumps(records, indent=2, default=str))
+            return 0
+        print("Atlas Recovery")
+        print_divider()
+        for r in records:
+            print(
+                f"  {r['operation']:<30} actions={r['actions_taken']} status={r['status']}"
+            )
+        return 0
+
+    elif subcmd == "retention":
+        dry_run = getattr(args, "dry_run", True)
+        plan = controller.run_retention(dry_run=dry_run)
+        if format_json:
+            print(json.dumps(plan, indent=2, default=str))
+            return 0
+        print(f"Atlas Retention ({'DRY RUN' if plan.get('dry_run') else 'APPLIED'})")
+        print_divider()
+        for table, info in plan.get("tables", {}).items():
+            print(
+                f"  {table:<22} days={info.get('policy_days')} "
+                f"to_delete={info.get('rows_to_delete')}"
+            )
+        return 0
+
+    elif subcmd == "health":
+        snapshot = controller.health_snapshot()
+        if format_json:
+            print(json.dumps(snapshot, indent=2, default=str))
+            return 0
+        print("Atlas Health Snapshot")
+        print_divider()
+        for sub, info in snapshot.get("subsystems", {}).items():
+            print(f"  {sub:<12} {info.get('status')}")
+        return 0
+
+    elif subcmd == "capabilities":
+        caps = controller.capabilities.all()
+        if format_json:
+            print(
+                json.dumps(
+                    {"capabilities": [c.to_dict() for c in caps]},
+                    indent=2,
+                    default=str,
+                )
+            )
+            return 0
+        print("Atlas Capabilities")
+        print_divider()
+        for c in caps:
+            risk = c.risk_level.value if hasattr(c.risk_level, "value") else c.risk_level
+            reqs = []
+            if c.requires_trust:
+                reqs.append("TRUST")
+            if c.requires_vista:
+                reqs.append("VISTA")
+            if c.requires_aegis:
+                reqs.append("AEGIS")
+            reqs_str = "+".join(reqs) if reqs else "none"
+            print(f"  {c.capability_name:<12} v{c.version} risk={risk} requires={reqs_str}")
+        return 0
+
+    elif subcmd == "version":
+        info = controller.release_info()
+        if format_json:
+            print(json.dumps(info, indent=2, default=str))
+            return 0
+        print(f"GuardianMesh {__version__} ({__phase__})")
+        print_divider()
+        for k, v in info.items():
+            if isinstance(v, (dict, list)):
+                continue
+            print(f"  {k:<20} {v}")
+        return 0
+
+    print("Usage: guardian atlas [status|backup|restore|recover|retention|health|capabilities|version]")
+    return 0
+
+
+def cmd_diagnostics(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Phase 10: Atlas diagnostics — full deep check."""
+    from guardianmesh.atlas.controller import AtlasController
+
+    format_json = getattr(args, "json", False) is True
+    if not config.database_path.is_file():
+        if format_json:
+            print(json.dumps({"error": "Database not initialized."}, indent=2))
+        else:
+            print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    controller = AtlasController(
+        db,
+        orion_version=__version__,
+        schema_version="10",
+        backup_dir=str(config.data_dir / "atlas_backups"),
+    )
+    full = getattr(args, "full", False)
+    report = controller.diagnose(full=full)
+    if format_json:
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    print("GuardianMesh Diagnostics")
+    print_divider()
+    for c in report["checks"]:
+        indicator = "✓" if c["ok"] else "✗"
+        print(f"  {c['name']:<32} {indicator}")
+        if c.get("reason") and not c["ok"]:
+            print(f"    Reason: {c['reason']}")
+    return 1 if report["critical_failure"] else 0
+
+
+def cmd_release(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Phase 10: release-readiness check."""
+    from guardianmesh.atlas.controller import AtlasController
+
+    format_json = getattr(args, "json", False) is True
+    if not config.database_path.is_file():
+        if format_json:
+            print(json.dumps({"error": "Database not initialized."}, indent=2))
+        else:
+            print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    controller = AtlasController(
+        db,
+        orion_version=__version__,
+        schema_version="10",
+        backup_dir=str(config.data_dir / "atlas_backups"),
+    )
+    full = getattr(args, "full", True)
+    report = controller.diagnose(full=full)
+    failed = [c for c in report["checks"] if not c["ok"]]
+    if format_json:
+        print(
+            json.dumps(
+                {
+                    "ready": not failed,
+                    "failed_checks": [c["name"] for c in failed],
+                    "passed_checks": [c["name"] for c in report["checks"] if c["ok"]],
+                    "summary": report,
+                },
+                indent=2,
+                default=str,
+            )
+        )
+        return 0 if not failed else 1
+    if failed:
+        print("Release: NOT READY", file=sys.stderr)
+        for c in failed:
+            print(f"  ✗ {c['name']}: {c.get('reason')}", file=sys.stderr)
+        return 1
+    print("Release: READY")
+    print_divider()
+    print(f"  {len(report['checks'])} checks passed")
     return 0

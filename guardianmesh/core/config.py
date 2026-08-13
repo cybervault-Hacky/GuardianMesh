@@ -19,8 +19,8 @@ VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL"}
 class GuardianConfig:
     """GuardianMesh runtime configuration."""
 
-    version: str = "0.6.0"
-    phase: str = "Nexus"
+    version: str = "1.0.0"
+    phase: str = "Atlas"
     home_dir: Path = field(default_factory=get_default_home_dir)
     data_dir: Path = field(default=Path())
     database_path: Path = field(default=Path())
@@ -85,6 +85,20 @@ class GuardianConfig:
     transport_reconnect_max_delay_seconds: float = 30.0
     transport_max_message_size_bytes: int = 65536
     transport_replay_window_size: int = 128
+
+    # Screen View Configuration (Phase 7: Vista)
+    screen_view_enabled: bool = True
+    screen_view_default_max_duration_seconds: int = 300  # 5 minutes
+    screen_view_max_duration_seconds: int = 3600  # 1 hour hard cap
+    screen_view_default_fps: int = 10
+    screen_view_max_fps: int = 30
+    screen_view_default_width: int = 1280
+    screen_view_default_height: int = 720
+    screen_view_max_width: int = 1920
+    screen_view_max_height: int = 1080
+    screen_view_max_frame_bytes: int = 4 * 1024 * 1024
+    screen_view_max_queue_size: int = 30
+    screen_view_inactivity_timeout_seconds: int = 60
 
     def __post_init__(self) -> None:
         """Resolve dependent directory paths and validate configuration boundaries."""
@@ -164,6 +178,28 @@ class GuardianConfig:
         if not (1 <= self.transport_listen_port <= 65535):
             raise ConfigError("transport_listen_port must be between 1 and 65535.")
 
+        # Screen view bounds validation (Phase 7: Vista)
+        if self.screen_view_default_max_duration_seconds <= 0:
+            raise ConfigError("screen_view_default_max_duration_seconds must be positive.")
+        if self.screen_view_max_duration_seconds < self.screen_view_default_max_duration_seconds:
+            raise ConfigError(
+                "screen_view_max_duration_seconds must be >= screen_view_default_max_duration_seconds."
+            )
+        if self.screen_view_default_fps <= 0:
+            raise ConfigError("screen_view_default_fps must be positive.")
+        if self.screen_view_max_fps < self.screen_view_default_fps:
+            raise ConfigError(
+                "screen_view_max_fps must be >= screen_view_default_fps."
+            )
+        if self.screen_view_max_width <= 0 or self.screen_view_max_height <= 0:
+            raise ConfigError("screen_view_max_width and max_height must be positive.")
+        if self.screen_view_max_frame_bytes <= 0:
+            raise ConfigError("screen_view_max_frame_bytes must be positive.")
+        if self.screen_view_max_queue_size <= 0:
+            raise ConfigError("screen_view_max_queue_size must be positive.")
+        if self.screen_view_inactivity_timeout_seconds <= 0:
+            raise ConfigError("screen_view_inactivity_timeout_seconds must be positive.")
+
     @property
     def config_file_path(self) -> Path:
         """Path to the config.json file."""
@@ -242,6 +278,18 @@ class GuardianConfig:
             "transport_reconnect_max_delay_seconds": self.transport_reconnect_max_delay_seconds,
             "transport_max_message_size_bytes": self.transport_max_message_size_bytes,
             "transport_replay_window_size": self.transport_replay_window_size,
+            "screen_view_enabled": self.screen_view_enabled,
+            "screen_view_default_max_duration_seconds": self.screen_view_default_max_duration_seconds,
+            "screen_view_max_duration_seconds": self.screen_view_max_duration_seconds,
+            "screen_view_default_fps": self.screen_view_default_fps,
+            "screen_view_max_fps": self.screen_view_max_fps,
+            "screen_view_default_width": self.screen_view_default_width,
+            "screen_view_default_height": self.screen_view_default_height,
+            "screen_view_max_width": self.screen_view_max_width,
+            "screen_view_max_height": self.screen_view_max_height,
+            "screen_view_max_frame_bytes": self.screen_view_max_frame_bytes,
+            "screen_view_max_queue_size": self.screen_view_max_queue_size,
+            "screen_view_inactivity_timeout_seconds": self.screen_view_inactivity_timeout_seconds,
         }
 
     @classmethod
@@ -250,8 +298,8 @@ class GuardianConfig:
         raw_home = data.get("home_dir")
         h_dir = Path(str(raw_home)) if raw_home else (home_dir or get_default_home_dir())
         return cls(
-            version=data.get("version", "0.5.0"),
-            phase=data.get("phase", "Console"),
+            version=data.get("version", "1.0.0"),
+            phase=data.get("phase", "Atlas"),
             home_dir=h_dir,
             data_dir=Path(data["data_dir"]) if "data_dir" in data else Path(),
             database_path=Path(data["database_path"]) if "database_path" in data else Path(),
@@ -308,6 +356,26 @@ class GuardianConfig:
             ),
             transport_max_message_size_bytes=int(data.get("transport_max_message_size_bytes", 65536)),
             transport_replay_window_size=int(data.get("transport_replay_window_size", 128)),
+            screen_view_enabled=bool(data.get("screen_view_enabled", True)),
+            screen_view_default_max_duration_seconds=int(
+                data.get("screen_view_default_max_duration_seconds", 300)
+            ),
+            screen_view_max_duration_seconds=int(
+                data.get("screen_view_max_duration_seconds", 3600)
+            ),
+            screen_view_default_fps=int(data.get("screen_view_default_fps", 10)),
+            screen_view_max_fps=int(data.get("screen_view_max_fps", 30)),
+            screen_view_default_width=int(data.get("screen_view_default_width", 1280)),
+            screen_view_default_height=int(data.get("screen_view_default_height", 720)),
+            screen_view_max_width=int(data.get("screen_view_max_width", 1920)),
+            screen_view_max_height=int(data.get("screen_view_max_height", 1080)),
+            screen_view_max_frame_bytes=int(
+                data.get("screen_view_max_frame_bytes", 4 * 1024 * 1024)
+            ),
+            screen_view_max_queue_size=int(data.get("screen_view_max_queue_size", 30)),
+            screen_view_inactivity_timeout_seconds=int(
+                data.get("screen_view_inactivity_timeout_seconds", 60)
+            ),
         )
 
 

@@ -127,6 +127,9 @@ class ConsoleService:
         # Subsystems
         subsystems = self.get_subsystem_statuses()
 
+        # Vista screen-view state (metadata only).
+        screen_state = self.get_screen_state()
+
         now = datetime.datetime.now(datetime.UTC).isoformat()
 
         return DashboardSnapshot(
@@ -147,6 +150,9 @@ class ConsoleService:
                 "storage": f"{storage_pct_free}% free" if storage_pct_free is not None else "Unknown",
                 "connectivity": overall_conn,
             },
+            screen_active_sessions=screen_state.get("active_sessions", 0),
+            screen_pending_authorizations=screen_state.get("pending_authorizations", 0),
+            screen_active_devices=screen_state.get("devices", []),
         )
 
     def list_devices_summary(self) -> list[dict[str, Any]]:
@@ -260,7 +266,46 @@ class ConsoleService:
             "Telemetry": "READY" if self.config.telemetry_enabled else "DISABLED",
             "Sentinel": "READY" if self.config.policy_evaluation_enabled else "DISABLED",
             "Transport": "READY" if self.config.transport_enabled else "DISABLED",
+            "Vista": "READY" if self.config.screen_view_enabled else "DISABLED",
             "Console": "READY",
+        }
+
+    def get_screen_state(self) -> dict[str, Any]:
+        """Return a metadata-only screen session aggregate for the dashboard.
+
+        This NEVER includes any frame payload. It exposes only:
+        * counts of active / pending / terminal sessions
+        * per-device active session ids and remaining seconds
+        """
+        try:
+            from guardianmesh.screen.registry import ScreenSessionRegistry
+        except Exception:
+            return {
+                "active_sessions": 0,
+                "pending_authorizations": 0,
+                "state": "INACTIVE",
+            }
+
+        registry = ScreenSessionRegistry(self.db)
+        all_sess = registry.list_all(limit=200)
+        active = [s for s in all_sess if s.state.value == "ACTIVE"]
+        pending = [s for s in all_sess if s.state.value == "PENDING_CHILD_APPROVAL"]
+        per_device: list[dict[str, Any]] = []
+        for s in active:
+            per_device.append(
+                {
+                    "device_id": s.device_id,
+                    "session_id": s.session_id,
+                    "remaining_seconds": s.remaining_seconds,
+                    "resolution": f"{s.width}x{s.height}",
+                    "fps": s.max_fps,
+                }
+            )
+        return {
+            "active_sessions": len(active),
+            "pending_authorizations": len(pending),
+            "state": "ACTIVE" if active else "INACTIVE",
+            "devices": per_device,
         }
 
     def get_recent_activity(self, limit: int = 5) -> list[dict[str, Any]]:
@@ -324,5 +369,14 @@ class ConsoleService:
             "TRANSPORT_SESSION_EXPIRED": "Transport session expired",
             "TRANSPORT_REVOKED": "Revoked device transport blocked",
             "TRANSPORT_ERROR": "Transport error encountered",
+            "SCREEN_VIEW_REQUESTED": "Screen view requested",
+            "SCREEN_VIEW_APPROVED": "Child approved screen view",
+            "SCREEN_VIEW_DENIED": "Child denied screen view",
+            "SCREEN_SESSION_STARTED": "Screen session started",
+            "SCREEN_SESSION_STOPPED": "Screen session stopped",
+            "SCREEN_SESSION_EXPIRED": "Screen session expired",
+            "SCREEN_SESSION_REVOKED": "Screen session revoked",
+            "SCREEN_FRAME_STREAM_STARTED": "Screen frame streaming started",
+            "SCREEN_FRAME_STREAM_STOPPED": "Screen frame streaming stopped",
         }
         return mapping.get(event_type, event_type.replace("_", " ").capitalize())

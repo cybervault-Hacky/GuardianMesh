@@ -35,6 +35,15 @@ class MessageType(str, Enum):
     REKEY = "REKEY"
     GOODBYE = "GOODBYE"
     ERROR = "ERROR"
+    # Vista / Phase 7 — narrowly-scoped screen view message types.
+    # No remote-control message type is ever added to this enum.
+    SCREEN_VIEW_REQUEST = "SCREEN_VIEW_REQUEST"
+    SCREEN_VIEW_APPROVAL = "SCREEN_VIEW_APPROVAL"
+    SCREEN_VIEW_DENIAL = "SCREEN_VIEW_DENIAL"
+    SCREEN_SESSION_START = "SCREEN_SESSION_START"
+    SCREEN_FRAME = "SCREEN_FRAME"
+    SCREEN_SESSION_STOP = "SCREEN_SESSION_STOP"
+    SCREEN_SESSION_EXPIRED = "SCREEN_SESSION_EXPIRED"
 
     @classmethod
     def from_str(cls, val: str) -> MessageType:

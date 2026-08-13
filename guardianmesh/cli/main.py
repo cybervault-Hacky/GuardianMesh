@@ -10,15 +10,21 @@ from pathlib import Path
 from guardianmesh import __phase__, __version__
 from guardianmesh.cli.commands import (
     cmd_alerts,
+    cmd_atlas,
     cmd_audit,
+    cmd_capabilities,
     cmd_config,
     cmd_console,
     cmd_devices,
+    cmd_diagnostics,
     cmd_doctor,
     cmd_identity,
     cmd_init,
+    cmd_orchestrate,
     cmd_pair,
     cmd_policy,
+    cmd_release,
+    cmd_screen,
     cmd_status,
     cmd_telemetry,
     cmd_transport,
@@ -32,7 +38,7 @@ from guardianmesh.core.logging import setup_logging
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
-    desc = f"GuardianMesh (Phase 6: {__phase__}) — Consent-based parental device supervision system."
+    desc = f"GuardianMesh (Phase 7: {__phase__}) — Consent-based parental device supervision system."
     parser = argparse.ArgumentParser(
         prog="guardian",
         description=desc,
@@ -195,6 +201,224 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_trans_reconn.add_argument("device_id", type=str, help="Target device ID.")
     p_trans_reconn.add_argument("--json", action="store_true", help="JSON output format.")
+
+    # screen (Phase 7: Vista)
+    p_screen = subparsers.add_parser(
+        "screen", help="Manage consent-based view-only screen sessions (Vista)."
+    )
+    p_screen.add_argument("--json", action="store_true", help="Machine-readable JSON output.")
+    screen_sub = p_screen.add_subparsers(dest="screen_action", metavar="<action>")
+
+    p_screen_status = screen_sub.add_parser(
+        "status", help="Show the status of view-only screen sessions."
+    )
+    p_screen_status.add_argument("device_id", nargs="?", default=None, help="Filter by device ID.")
+    p_screen_status.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_request = screen_sub.add_parser(
+        "request", help="Parent requests a view-only screen session with a child device."
+    )
+    p_screen_request.add_argument("device_id", type=str, help="Target child device ID (GM-C-XXXXXXXX).")
+    p_screen_request.add_argument(
+        "--duration",
+        type=int,
+        default=None,
+        help="Maximum session duration in seconds (bounded).",
+    )
+    p_screen_request.add_argument("--label", type=str, default=None, help="Friendly label.")
+    p_screen_request.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_approve = screen_sub.add_parser(
+        "approve", help="Child-side explicit approval for a screen view request."
+    )
+    p_screen_approve.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_approve.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_deny = screen_sub.add_parser(
+        "deny", help="Child-side explicit denial for a screen view request."
+    )
+    p_screen_deny.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_deny.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_start = screen_sub.add_parser(
+        "start", help="Begin streaming frames for an APPROVED screen session."
+    )
+    p_screen_start.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_start.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_stop = screen_sub.add_parser(
+        "stop", help="Stop a screen session (parent- or child-initiated)."
+    )
+    p_screen_stop.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_stop.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_view = screen_sub.add_parser(
+        "view", help="Show live metadata for an active session (no frame rendering)."
+    )
+    p_screen_view.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_view.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_list = screen_sub.add_parser(
+        "list", help="List all screen sessions recorded in the local database."
+    )
+    p_screen_list.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_diag = screen_sub.add_parser(
+        "diagnostics", help="Show aggregate Vista subsystem diagnostics."
+    )
+    p_screen_diag.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_providers = screen_sub.add_parser(
+        "providers",
+        help="List available Android capture providers (metadata only).",
+    )
+    p_screen_providers.add_argument(
+        "--json", action="store_true", help="JSON output format."
+    )
+
+    p_screen_limits = screen_sub.add_parser(
+        "limits", help="Show the documented Aegis hard limits."
+    )
+    p_screen_limits.add_argument(
+        "--json", action="store_true", help="JSON output format."
+    )
+
+    # orchestrate (Phase 9: Orion)
+    p_orch = subparsers.add_parser(
+        "orchestrate",
+        help="Consent-aware orchestration and state reconciliation (Orion).",
+    )
+    p_orch.add_argument("--json", action="store_true", help="JSON output format.")
+    orch_sub = p_orch.add_subparsers(dest="orchestrate_action", metavar="<action>")
+
+    p_orch_status = orch_sub.add_parser(
+        "status", help="Show Orion subsystem status and metrics."
+    )
+    p_orch_status.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_orch_events = orch_sub.add_parser(
+        "events", help="List recent Orion events from the registry."
+    )
+    p_orch_events.add_argument(
+        "--device", dest="device", type=str, default=None, help="Filter by device ID."
+    )
+    p_orch_events.add_argument(
+        "--limit", type=int, default=50, help="Maximum number of events to show."
+    )
+    p_orch_events.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_orch_actions = orch_sub.add_parser(
+        "actions", help="List Orion actions in the persistent queue."
+    )
+    p_orch_actions.add_argument(
+        "--status", type=str, default=None, help="Filter by action status."
+    )
+    p_orch_actions.add_argument(
+        "--device", dest="device", type=str, default=None, help="Filter by device ID."
+    )
+    p_orch_actions.add_argument(
+        "--limit", type=int, default=50, help="Maximum number of actions to show."
+    )
+    p_orch_actions.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_orch_action = orch_sub.add_parser(
+        "action", help="Show details of a single Orion action."
+    )
+    p_orch_action.add_argument("action_id", type=str, help="Orion action ID.")
+    p_orch_action.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_orch_retry = orch_sub.add_parser(
+        "retry", help="Re-queue a FAILED Orion action for execution."
+    )
+    p_orch_retry.add_argument("action_id", type=str, help="Orion action ID.")
+    p_orch_retry.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_orch_cancel = orch_sub.add_parser(
+        "cancel", help="Cancel a PENDING or RUNNING Orion action."
+    )
+    p_orch_cancel.add_argument("action_id", type=str, help="Orion action ID.")
+    p_orch_cancel.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_orch_recon = orch_sub.add_parser(
+        "reconcile", help="Run state reconciliation for a single device."
+    )
+    p_orch_recon.add_argument("device_id", type=str, help="Device ID to reconcile.")
+    p_orch_recon.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_orch_caps = orch_sub.add_parser(
+        "capabilities",
+        help="List device capabilities (omit device_id) or show one device.",
+    )
+    p_orch_caps.add_argument(
+        "device_id", nargs="?", default=None, help="Device ID (optional)."
+    )
+    p_orch_caps.add_argument("--json", action="store_true", help="JSON output format.")
+
+    # capabilities (shorthand: guardian capabilities <device_id>)
+    p_caps = subparsers.add_parser(
+        "capabilities", help="Show Orion capabilities for a single device."
+    )
+    p_caps.add_argument("device_id", type=str, help="Device ID to inspect.")
+    p_caps.add_argument("--json", action="store_true", help="JSON output format.")
+
+    # atlas (Phase 10)
+    p_atlas = subparsers.add_parser(
+        "atlas",
+        help="Production platform (Atlas): backup, restore, recover, retention, health.",
+    )
+    p_atlas.add_argument("--json", action="store_true", help="JSON output format.")
+    atlas_sub = p_atlas.add_subparsers(dest="atlas_action", metavar="<action>")
+
+    atlas_sub.add_parser(
+        "status", help="Show Atlas subsystem status and observability metrics."
+    )
+    p_atlas_backup = atlas_sub.add_parser(
+        "backup", help="Create a metadata-only backup."
+    )
+    p_atlas_backup.add_argument(
+        "--device", dest="device_id", type=str, default=None, help="Device ID for context."
+    )
+    p_atlas_restore = atlas_sub.add_parser(
+        "restore", help="Restore a backup (dry-run by default)."
+    )
+    p_atlas_restore.add_argument("backup_id", type=str, help="Backup ID to restore.")
+    p_atlas_restore.add_argument(
+        "--apply",
+        dest="dry_run",
+        action="store_false",
+        help="Apply the restore (default is dry-run).",
+    )
+    atlas_sub.add_parser(
+        "recover", help="Run crash recovery for expired state."
+    )
+    p_atlas_retain = atlas_sub.add_parser(
+        "retention", help="Apply retention policies (dry-run by default)."
+    )
+    p_atlas_retain.add_argument(
+        "--apply",
+        dest="dry_run",
+        action="store_false",
+        help="Apply the retention (default is dry-run).",
+    )
+    atlas_sub.add_parser("health", help="Record a health snapshot.")
+    atlas_sub.add_parser("capabilities", help="List versioned Atlas capabilities.")
+    atlas_sub.add_parser("version", help="Show Atlas release information.")
+
+    # diagnostics (Phase 10)
+    p_diag = subparsers.add_parser(
+        "diagnostics",
+        help="Run deep Atlas diagnostics (subset of doctor).",
+    )
+    p_diag.add_argument("--json", action="store_true", help="JSON output format.")
+    p_diag.add_argument(
+        "--full", action="store_true", help="Run the full deep diagnostic suite."
+    )
+
+    # release (Phase 10)
+    p_rel = subparsers.add_parser(
+        "release", help="Check release-readiness against documented gates."
+    )
+    p_rel.add_argument("--json", action="store_true", help="JSON output format.")
 
     # identity
     p_ident = subparsers.add_parser("identity", help="Manage cryptographic device identities.")
@@ -394,6 +618,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("  guardian pair      Manage secure parent-child device pairing and trust")
             print("  guardian telemetry Inspect privacy-bounded device health telemetry")
             print("  guardian transport Manage secure device transport and synchronized channels")
+            print("  guardian screen    Manage consent-based view-only screen sessions (Vista)")
+            print("  guardian orchestrate Consent-aware orchestration and state reconciliation (Orion)")
             print("  guardian identity  Manage cryptographic device identities")
             print("  guardian init      Initialize local repository, database, and identity")
             print("  guardian audit     Inspect sanitized local audit logs")
@@ -432,6 +658,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not getattr(args, "transport_action", None):
                 args.transport_action = "status"
             return cmd_transport(args, config)
+        elif args.command == "screen":
+            if not getattr(args, "screen_action", None):
+                args.screen_action = "status"
+            return cmd_screen(args, config)
+        elif args.command == "orchestrate":
+            if not getattr(args, "orchestrate_action", None):
+                args.orchestrate_action = "status"
+            return cmd_orchestrate(args, config)
+        elif args.command == "capabilities":
+            return cmd_capabilities(args, config)
+        elif args.command == "atlas":
+            if not getattr(args, "atlas_action", None):
+                args.atlas_action = "status"
+            return cmd_atlas(args, config)
+        elif args.command == "diagnostics":
+            return cmd_diagnostics(args, config)
+        elif args.command == "release":
+            return cmd_release(args, config)
         elif args.command == "console":
             return cmd_console(args, config)
         elif args.command == "audit":

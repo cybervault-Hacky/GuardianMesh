@@ -1,13 +1,29 @@
 # GuardianMesh
 
 [![Phase](https://img.shields.io/badge/Phase-10%20Atlas-blue.svg)](docs/ROADMAP.md)
-[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/Version-1.1.0-green.svg)](pyproject.toml)
 [![Platform](https://img.shields.io/badge/Platform-Termux%20%7C%20Linux-orange.svg)](#supported-platforms)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 **GuardianMesh** is a developer-grade, consent-based parental device supervision system designed to run on Termux (Android) and Linux.
 
 ---
+
+
+## Parent Console (Atlas v1.1.0)
+
+GuardianMesh now includes a local Parent Console for normal parent use:
+
+```bash
+guardian init --role parent
+guardian console --web
+```
+
+The console binds to `127.0.0.1` by default, requires local session/CSRF
+protection for changes, and exposes Home, Devices, Screen, Alerts, Activity,
+Settings, and About. It reuses the existing consent, trust, Vista, Aegis,
+Orion, and Atlas APIs; it does not implement surveillance, remote control, or
+a parallel security model. See [docs/CONSOLE.md](docs/CONSOLE.md).
 
 ## Safety & Architectural Boundary
 

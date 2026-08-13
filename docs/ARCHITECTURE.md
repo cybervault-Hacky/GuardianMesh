@@ -181,3 +181,16 @@ GuardianMesh maintains an idempotent SQLite database across schema migrations:
   - **Migration 9 (`009_orion_schema`)**: `orion_events`, `orion_actions` (with UNIQUE INDEX on `idempotency_key`), `orion_capabilities`, `orion_reconciliation` — all metadata only. No columns for frame bytes, command strings, or secrets.
 - **Phase 10 (Atlas)**: Production hardening, reliability, and release platform.
   - **Migration 10 (`010_atlas`)**: `atlas_backups`, `atlas_health`, `atlas_recovery`, `atlas_capability_versions`, `atlas_retention` — all metadata only. No columns for frame bytes, command strings, or secrets.
+
+
+---
+
+## Parent Console Web UI (Atlas v1.1.0)
+
+The local Parent Console is a thin presentation layer over the existing Python
+subsystems. A stdlib HTTP server serves a static web UI and an allowlisted JSON
+API from loopback only. The presenter in `guardianmesh/console/web/presenter.py`
+orchestrates `ConsoleService`, `ScreenController`, `TrustManager`,
+`PairingManager`, `AlertManager`, `AuditLogger`, and Atlas diagnostics. No
+browser code is authoritative for trust, consent, authorization, or capture;
+those checks remain in the backend.

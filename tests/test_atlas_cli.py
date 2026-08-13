@@ -170,7 +170,7 @@ def test_atlas_version_json(tmp_path: Path) -> None:
     res = _run_cli(tmp_path, "atlas", "--json", "version")
     assert res.returncode == 0
     data = json.loads(res.stdout)
-    assert data["orion_version"] == "1.0.0"
+    assert data["orion_version"] == "1.1.0"
 
 
 def test_diagnostics_help(tmp_path: Path) -> None:

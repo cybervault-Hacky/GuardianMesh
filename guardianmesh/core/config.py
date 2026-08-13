@@ -19,7 +19,7 @@ VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL"}
 class GuardianConfig:
     """GuardianMesh runtime configuration."""
 
-    version: str = "1.0.0"
+    version: str = "1.1.0"
     phase: str = "Atlas"
     home_dir: Path = field(default_factory=get_default_home_dir)
     data_dir: Path = field(default=Path())
@@ -298,7 +298,7 @@ class GuardianConfig:
         raw_home = data.get("home_dir")
         h_dir = Path(str(raw_home)) if raw_home else (home_dir or get_default_home_dir())
         return cls(
-            version=data.get("version", "1.0.0"),
+            version=data.get("version", "1.1.0"),
             phase=data.get("phase", "Atlas"),
             home_dir=h_dir,
             data_dir=Path(data["data_dir"]) if "data_dir" in data else Path(),

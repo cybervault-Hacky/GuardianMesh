@@ -499,3 +499,17 @@ Atlas is NOT designed to defend against:
 
 All 9 checks pass on a healthy install.
 
+
+
+---
+
+## 8. Parent Console Local Web UI Security (Atlas v1.1.0)
+
+The Parent Console is a privileged local interface. It binds to loopback only,
+rejects non-loopback Host headers, issues an HttpOnly session cookie plus a
+double-submit CSRF token for POSTs, and exposes only allowlisted safe actions.
+There is no shell, eval, arbitrary command, arbitrary Orion action, file,
+or remote-input endpoint. Secrets, private keys, OTPs, passwords, raw audit
+details, database files, and screen frame bytes are never sent to the browser.
+The UI calls existing trust, Vista, Aegis, and Orion authorization paths; it
+cannot create consent or start hidden capture.

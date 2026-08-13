@@ -23,7 +23,7 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
      ↓
   Phase 9: Orion / Consent-Aware Orchestration (v0.9.0)
      ↓
-  Phase 10: Atlas / Production Hardening (v1.0.0)  <-- [Current Phase]
+  Phase 10: Atlas / Parent Console UI (v1.1.0)  <-- [Current Phase]
 ```
 
 ---
@@ -197,7 +197,7 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 10: Atlas / Production Hardening (v1.0.0) — *Current Phase*
+## Phase 10: Atlas / Parent Console UI (v1.1.0) — *Current Phase*
 - **Objective**: Production hardening, reliability, and release platform. Make the existing v0.9 system more secure, more reliable, more observable, more recoverable, more maintainable, more auditable, and more release-ready. **NOT** a new surveillance subsystem.
 - **Mandatory Safety Rules**:
   1. **No new surveillance capability.** Atlas never implements covert monitoring, remote input, shell execution, hidden screen capture, microphone/camera activation, location tracking, clipboard collection, message collection, browser-history collection, or bypass around existing consent mechanisms.
@@ -231,3 +231,12 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
   - Documentation: `docs/ATLAS.md`, `docs/RELEASE.md`, `docs/OPERATIONS.md`, `docs/UPGRADING.md`, `docs/RECOVERY.md`, `docs/OBSERVABILITY.md`.
 
 ---
+
+
+### Atlas v1.1.0 — Parent Console UI
+
+- Local web UI launched with `guardian console --web`.
+- Parent-facing Home, Devices, Screen, Alerts, Activity, Settings, and About.
+- Eight supported languages and light/dark/system appearance.
+- Loopback-only HTTP service with session and CSRF protection.
+- Screen-sharing orchestration through Vista/Aegis; no capture bypass or fake live view.

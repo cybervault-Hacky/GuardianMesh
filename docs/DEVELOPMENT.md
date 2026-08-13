@@ -47,7 +47,7 @@ pytest -v
 pytest tests/test_transport_*.py
 
 # Run Console tests
-pytest tests/test_console_cli.py tests/test_devices_cli.py tests/test_console_services.py
+pytest tests/test_console_cli.py tests/test_devices_cli.py tests/test_console_services.py tests/test_parent_console_web.py
 
 # Run Orion tests
 pytest tests/test_orion_*.py tests/test_migration_v9.py
@@ -241,3 +241,19 @@ Any PR touching the Atlas production-hardening subsystem
 9. Pass the new Atlas unit tests in `tests/test_atlas_*.py`
    and the new migration test in `tests/test_migration_v10.py`
    without regression.
+
+
+### Parent Console development
+
+The web UI has no Node/build step. Static assets live in
+`guardianmesh/console/web/static/`; translations live in
+`guardianmesh/console/web/locales/`. Launch locally with:
+
+```bash
+guardian console web --no-open --port 8765
+```
+
+Do not add endpoints for shell execution, arbitrary Python evaluation, file
+access, remote input, microphone/camera activation, message/history/location
+collection, or generic remote commands. Every state-changing action must use
+the existing backend authorization path.

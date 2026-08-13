@@ -2503,6 +2503,24 @@ def cmd_devices(args: argparse.Namespace, config: GuardianConfig) -> int:
 def cmd_console(args: argparse.Namespace, config: GuardianConfig) -> int:
     """Parent management console and unified dashboard (Phase 5: Console)."""
     subcmd = getattr(args, "console_action", None)
+    use_web = getattr(args, "web", False) or subcmd == "web"
+
+    if not config.database_path.is_file():
+        if use_web:
+            print("Database not initialized. Run 'guardian init' first.")
+            return 1
+        print("Database not initialized. Run 'guardian init' first.")
+        return 1
+
+    if use_web:
+        from guardianmesh.console.web.app import launch_console
+
+        return launch_console(
+            config=config,
+            host=getattr(args, "host", "127.0.0.1"),
+            port=int(getattr(args, "port", 8765)),
+            open_browser=not bool(getattr(args, "no_open", False)),
+        )
     format_json = getattr(args, "json", False) is True
     non_interactive = getattr(args, "non_interactive", False)
     watch_mode = getattr(args, "watch", False)
@@ -2511,10 +2529,6 @@ def cmd_console(args: argparse.Namespace, config: GuardianConfig) -> int:
 
     if no_color:
         config.console_color_enabled = False
-
-    if not config.database_path.is_file():
-        print("Database not initialized. Run 'guardian init' first.")
-        return 1
 
     db = Database(config.database_path)
     service = ConsoleService(db, config)

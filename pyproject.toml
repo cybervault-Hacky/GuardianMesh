@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guardianmesh"
-version = "1.0.0"
+version = "1.1.0"
 description = "Consent-based parental device supervision system — Phase 10: Atlas"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -45,6 +45,9 @@ guardian = "guardianmesh.cli.main:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["guardianmesh*"]
+
+[tool.setuptools.package-data]
+guardianmesh = ["console/web/static/*", "console/web/locales/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

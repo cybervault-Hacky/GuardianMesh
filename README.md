@@ -1,7 +1,7 @@
 # GuardianMesh
 
-[![Phase](https://img.shields.io/badge/Phase-9%20Orion-blue.svg)](docs/ROADMAP.md)
-[![Version](https://img.shields.io/badge/Version-0.9.0-green.svg)](pyproject.toml)
+[![Phase](https://img.shields.io/badge/Phase-10%20Atlas-blue.svg)](docs/ROADMAP.md)
+[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)](pyproject.toml)
 [![Platform](https://img.shields.io/badge/Platform-Termux%20%7C%20Linux-orange.svg)](#supported-platforms)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -86,6 +86,26 @@ Phase 9 introduces **Consent-Aware Orchestration & State Reconciliation**. Orion
 - **Doctor Extensions**: 11 new Orion-specific checks (`Orion module`, `Orion event bus`, `Orion action queue`, `Orion idempotency`, `Orion reconciliation`, `Orion capability registry`, `Orion database schema`, `Orion audit integration`, `Orion consent integration`, `Orion offline queue`, `Orion handler registry`).
 
 See [docs/ORION.md](docs/ORION.md), [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md), [docs/RECONCILIATION.md](docs/RECONCILIATION.md), and [docs/ACTIONS.md](docs/ACTIONS.md).
+
+## Phase 10: Atlas (v1.0.0)
+
+Phase 10 introduces the **Production Hardening, Reliability & Release Platform** layer. Atlas does not add any new surveillance capability. It hardens the existing system with:
+
+- **Integrity Verification** — read-only checks for SQLite schema, migration state, foreign keys, audit redaction, and forbidden columns.
+- **Lifecycle Validation** — verifies that no expired identity, no revoked device, no expired transport session, and no expired Orion action remains in an inconsistent state.
+- **Backup & Restore** — metadata-only backups with integrity digests, schema-version compatibility, dry-run by default, and never includes private keys, frame bytes, command strings, or secrets.
+- **Crash Recovery** — deterministic recovery that marks expired state as EXPIRED. Never resurrects revoked trust, expired authorization, or expired Aegis consent. Fails closed.
+- **Capability Versioning** — every documented subsystem gets a versioned capability with risk classification and explicit consent requirements.
+- **Retention** — bounded retention policies for metadata tables; never collects new categories of personal data.
+- **Observability** — bounded metrics for every subsystem without exposing secrets or frame bytes.
+- **Diagnostics** — `guardian diagnostics` runs the full deep suite; `guardian doctor --full` includes all 9 Atlas checks.
+- **Release Validation** — `guardian release check` runs every documented gate. Does not claim readiness when checks fail.
+- **CLI Extensions** — `guardian atlas`, `guardian diagnostics`, `guardian release`. All support `--json` and work at 40/60/80/120 column terminals.
+- **9 New Doctor Checks** — Atlas module, Atlas database schema, Atlas capability registry, Atlas migration state, Atlas backup subsystem, Atlas recovery subsystem, Atlas integrity verifier, Atlas observability, Atlas release validation.
+- **200+ New Tests** — covering normal operation, malformed input, invalid state, expired state, revoked state, corruption, interruption, duplicate operations, concurrent operations, retry limits, recovery, migration compatibility, backup integrity, restore integrity, JSON output, narrow terminal output, NO_COLOR, security boundaries, privacy boundaries.
+- **Documentation** — `docs/ATLAS.md`, `docs/RELEASE.md`, `docs/OPERATIONS.md`, `docs/UPGRADING.md`, `docs/RECOVERY.md`, `docs/OBSERVABILITY.md`.
+
+Atlas never bypasses Trust, Vista authorization, or Aegis system consent. It never stores frame bytes, command strings, secrets, or private user content.
 
 ---
 
@@ -270,6 +290,7 @@ GuardianMesh is structured across 10 progressive phases:
 7. **Phase 7: View-Only Screen Sharing (v0.7.0)** — View-only screen sharing with explicit child authorization, persistent active indicator, and no remote control.
 8. **Phase 8: Aegis (v0.8.0)** — Android companion with `MediaProjection` consent flow, foreground service indicator, and frame pipeline.
 9. **Phase 9: Orion (v0.9.0)** — Consent-aware orchestration & state reconciliation. Event bus, persistent action queue, capability registry, deterministic reconciler, safe handler set.
+10. **Phase 10: Atlas (v1.0.0)** — Production hardening, reliability, and release platform. Integrity verification, lifecycle validation, backup/restore, crash recovery, capability versioning, retention, observability, diagnostics, release validation.
 10. **Phase 10: Production Release (v1.0.0)** — Production-grade multi-platform release.
 
 ---
@@ -284,6 +305,12 @@ GuardianMesh is structured across 10 progressive phases:
 - [Orchestration Internals](docs/ORCHESTRATION.md)
 - [Reconciliation Guide](docs/RECONCILIATION.md)
 - [Actions Guide](docs/ACTIONS.md)
+- [Atlas Production Platform](docs/ATLAS.md)
+- [Release Process](docs/RELEASE.md)
+- [Operations Guide](docs/OPERATIONS.md)
+- [Upgrading Guide](docs/UPGRADING.md)
+- [Recovery Guide](docs/RECOVERY.md)
+- [Observability Guide](docs/OBSERVABILITY.md)
 - [Android Companion Architecture](docs/ANDROID.md)
 - [Screen Capture Pipeline](docs/SCREEN_CAPTURE.md)
 - [Privacy Guarantees](docs/PRIVACY.md)

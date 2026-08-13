@@ -142,6 +142,24 @@ guardianmesh/
 │   ├── registry.py       # OrionRegistry (persistence)
 │   ├── scheduler.py      # OrionScheduler (composition)
 │   └── coordinator.py    # OrionCoordinator (high-level entry point)
+├── atlas/
+│   ├── __init__.py       # Atlas public API re-exports
+│   ├── errors.py         # 14 Atlas exception classes
+│   ├── models.py         # AtlasCapabilityVersion, AtlasBackupInfo, etc.
+│   ├── integrity.py      # AtlasIntegrityVerifier (read-only checks)
+│   ├── lifecycle.py      # AtlasLifecycleValidator (key/session lifecycle)
+│   ├── health.py         # AtlasHealthMonitor (per-subsystem health)
+│   ├── diagnostics.py    # AtlasDiagnostics (standard and deep suites)
+│   ├── backup.py         # AtlasBackupManager (metadata-only backups)
+│   ├── restore.py        # AtlasRestoreManager (dry-run-first restore)
+│   ├── recovery.py       # AtlasRecoveryManager (crash recovery)
+│   ├── compatibility.py  # AtlasCompatibilityChecker
+│   ├── capabilities.py   # AtlasCapabilityRegistry (versioned capabilities)
+│   ├── observability.py  # AtlasObservability (bounded metrics)
+│   ├── metrics.py        # AtlasMetrics (aggregated metrics)
+│   ├── retention.py      # AtlasRetentionManager (bounded retention)
+│   ├── release.py        # AtlasReleaseValidator (release-readiness)
+│   └── controller.py     # AtlasController (high-level entry point)
 ```
 
 ---
@@ -161,3 +179,5 @@ GuardianMesh maintains an idempotent SQLite database across schema migrations:
   - **Migration 8 (`008_aegis_screen_capture`)**: `aegis_sessions` (metadata only).
 - **Phase 9 (Orion)**: Consent-aware orchestration & state reconciliation.
   - **Migration 9 (`009_orion_schema`)**: `orion_events`, `orion_actions` (with UNIQUE INDEX on `idempotency_key`), `orion_capabilities`, `orion_reconciliation` — all metadata only. No columns for frame bytes, command strings, or secrets.
+- **Phase 10 (Atlas)**: Production hardening, reliability, and release platform.
+  - **Migration 10 (`010_atlas`)**: `atlas_backups`, `atlas_health`, `atlas_recovery`, `atlas_capability_versions`, `atlas_retention` — all metadata only. No columns for frame bytes, command strings, or secrets.

@@ -21,10 +21,12 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
      ↓
   Phase 8: Aegis / Production Android Companion (v0.8.0)
      ↓
-  Phase 9: Orion / Consent-Aware Orchestration (v0.9.0)  <-- [Current Phase]
+  Phase 9: Orion / Consent-Aware Orchestration (v0.9.0)
      ↓
-  Phase 10: Production Release (v1.0.0)
+  Phase 10: Atlas / Production Hardening (v1.0.0)  <-- [Current Phase]
 ```
+
+---
 
 ---
 
@@ -160,7 +162,7 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 9: Orion / Consent-Aware Orchestration (v0.9.0) — *Current Phase*
+## Phase 9: Orion / Consent-Aware Orchestration (v0.9.0) — *Complete*
 - **Objective**: Deterministic, event-driven orchestration of all eight existing subsystems (Pulse, Sentinel, Console, Nexus, Vista, Aegis, Trust, Link) — without introducing any new covert monitoring, remote control, shell execution, hidden screen capture, microphone/camera activation, location tracking, clipboard collection, message collection, browser-history collection, or bypass of existing consent mechanisms.
 - **Mandatory Safety Rules**:
   1. **Orion is orchestration, NOT surveillance.** The `OrionActionType` and `OrionEventType` allowlists are strict. `EXECUTE`, `SHELL`, `REMOTE_INPUT`, `TYPE_TEXT`, `ENABLE_MICROPHONE`, `ENABLE_CAMERA`, `READ_SMS`, `READ_FILES`, `HIDDEN_SCREENSHOT`, `KEYSTROKE`, `MESSAGE`, `MICROPHONE`, `CAMERA`, `LOCATION`, `BROWSER_HISTORY`, etc. are all forbidden at construction time.
@@ -195,5 +197,37 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 10: Production Release (v1.0.0)
-- **Objective**: General availability across Linux distributions and Termux Android.
+## Phase 10: Atlas / Production Hardening (v1.0.0) — *Current Phase*
+- **Objective**: Production hardening, reliability, and release platform. Make the existing v0.9 system more secure, more reliable, more observable, more recoverable, more maintainable, more auditable, and more release-ready. **NOT** a new surveillance subsystem.
+- **Mandatory Safety Rules**:
+  1. **No new surveillance capability.** Atlas never implements covert monitoring, remote input, shell execution, hidden screen capture, microphone/camera activation, location tracking, clipboard collection, message collection, browser-history collection, or bypass around existing consent mechanisms.
+  2. **Metadata-only persistence.** Atlas never stores frame bytes, command strings, private keys, session keys, passwords, OTPs, or private user content. The five new Atlas database tables (`atlas_backups`, `atlas_health`, `atlas_recovery`, `atlas_capability_versions`, `atlas_retention`) have no column for sensitive content.
+  3. **Backups are metadata-only.** The `BACKUP_ALLOWED_TABLES` set explicitly excludes `transport_messages` and other sensitive tables. The `BACKUP_FORBIDDEN_COLUMNS` map strips `private_key_pem` from the `identities` table. Every backup is integrity-protected by a SHA-256 digest.
+  4. **Restore is fail-closed.** Restore rejects unknown backups, rejects incompatible schema versions, and refuses to silently overwrite active state. Dry-run is the default.
+  5. **Recovery is fail-closed.** Recovery never resurrects revoked trust, expired authorization, or expired Aegis consent. Recovery marks expired state as EXPIRED; it never re-queues or re-executes.
+  6. **Capabilities are explicit.** Every documented subsystem gets a versioned `AtlasCapabilityVersion` with risk classification (LOW/MEDIUM/HIGH/CRITICAL) and explicit consent requirements. Unknown capabilities are rejected.
+  7. **Retention is bounded.** Retention policies bound the growth of existing metadata tables. They never collect new categories of personal data.
+  8. **Observability is metadata-only.** Every metric is a count or a timestamp. Metrics never include secrets, frame bytes, or private content.
+  9. **Doctor is honest.** `guardian doctor` reports 9 new Atlas-specific checks. On Linux it shows `Android screen provider: integration adapter only` as a Notice. It never falsely reports real Android capture as operational.
+- **Deliverables**:
+  - Isolated `guardianmesh/atlas/` package with 18 modules: `__init__`, `errors`, `models`, `integrity`, `lifecycle`, `health`, `diagnostics`, `backup`, `restore`, `recovery`, `compatibility`, `capabilities`, `observability`, `metrics`, `retention`, `release`, `controller`.
+  - `AtlasIntegrityVerifier` — SQLite integrity, schema presence, migration state, foreign keys, forbidden columns, audit presence, audit redaction, identity presence.
+  - `AtlasLifecycleValidator` — no-expired-active-identity, no-revoked-device-in-active, no-expired-transport-sessions, no-orphaned-screen-authorizations, no-expired-orion-actions, no-stale-sequences.
+  - `AtlasBackupManager` — metadata-only backups with SHA-256 integrity digest, schema-version compatibility check, allowed-table whitelist, forbidden-column redaction.
+  - `AtlasRestoreManager` — dry-run by default, schema-version check, integrity verification, atomic restore.
+  - `AtlasRecoveryManager` — deterministic recovery for expired Orion actions, expired screen authorizations, expired Aegis sessions. Never resurrects revoked state.
+  - `AtlasHealthMonitor` — per-subsystem health check (OK/DEGRADED/WARNING/FAILED/UNAVAILABLE), persisted snapshots, latest-records query.
+  - `AtlasObservability` — bounded metrics for every subsystem.
+  - `AtlasMetrics` — aggregated metrics with failed/degraded subsystem counts.
+  - `AtlasCapabilityRegistry` — versioned capability descriptors for every documented subsystem.
+  - `AtlasRetentionManager` — bounded metadata-only retention policies.
+  - `AtlasReleaseValidator` — release-readiness checks including the Android manifest permission verification.
+  - `AtlasDiagnostics` — standard and deep diagnostic suites.
+  - `AtlasController` — high-level entry point.
+  - `010_atlas` migration creates 5 tables: `atlas_backups`, `atlas_health`, `atlas_recovery`, `atlas_capability_versions`, `atlas_retention`.
+  - CLI extensions: `guardian atlas status|backup|restore|recover|retention|health|capabilities|version`, `guardian diagnostics [--full]`, `guardian release`. All support `--json`.
+  - 9 new doctor checks: `Atlas module`, `Atlas database schema`, `Atlas capability registry`, `Atlas migration state`, `Atlas backup subsystem`, `Atlas recovery subsystem`, `Atlas integrity verifier`, `Atlas observability`, `Atlas release validation`.
+  - 200+ new tests covering: normal operation, malformed input, invalid state, expired state, revoked state, corruption, interruption, duplicate operations, concurrent operations, retry limits, recovery, migration compatibility, backup integrity, restore integrity, JSON output, narrow terminal output, NO_COLOR, security boundaries, privacy boundaries.
+  - Documentation: `docs/ATLAS.md`, `docs/RELEASE.md`, `docs/OPERATIONS.md`, `docs/UPGRADING.md`, `docs/RECOVERY.md`, `docs/OBSERVABILITY.md`.
+
+---

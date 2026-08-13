@@ -109,6 +109,22 @@ The following invariants hold across every GuardianMesh phase:
   invented; reconciliation reports are metadata-only; the
   capability registry refuses to enable any negative default.
 
+### Phase 10 (Atlas)
+
+* See ``docs/ATLAS.md`` and ``docs/SECURITY.md#7-atlas-production-platform-security-phase-10``
+  for the full privacy statement.
+* Highlights: production hardening layer with read-only integrity
+  verification, deterministic crash recovery, and metadata-only
+  backup. Five Atlas database tables with no column for sensitive
+  content. ``BACKUP_ALLOWED_TABLES`` excludes
+  ``transport_messages``; ``BACKUP_FORBIDDEN_COLUMNS`` strips
+  ``private_key_pem`` from ``identities``. Recovery never
+  resurrects revoked trust, expired authorization, or expired
+  Aegis consent. Android manifest verification rejects
+  ``RECORD_AUDIO``, ``CAMERA``, ``ACCESS_FINE_LOCATION``,
+  ``READ_SMS``, ``BIND_ACCESSIBILITY_SERVICE``, and others.
+  9 new doctor checks cover the full Atlas subsystem.
+
 ---
 
 ## 3. What GuardianMesh never does

@@ -10,17 +10,20 @@ from pathlib import Path
 from guardianmesh import __phase__, __version__
 from guardianmesh.cli.commands import (
     cmd_alerts,
+    cmd_atlas,
     cmd_audit,
     cmd_capabilities,
     cmd_config,
     cmd_console,
     cmd_devices,
+    cmd_diagnostics,
     cmd_doctor,
     cmd_identity,
     cmd_init,
     cmd_orchestrate,
     cmd_pair,
     cmd_policy,
+    cmd_release,
     cmd_screen,
     cmd_status,
     cmd_telemetry,
@@ -358,6 +361,65 @@ def build_parser() -> argparse.ArgumentParser:
     p_caps.add_argument("device_id", type=str, help="Device ID to inspect.")
     p_caps.add_argument("--json", action="store_true", help="JSON output format.")
 
+    # atlas (Phase 10)
+    p_atlas = subparsers.add_parser(
+        "atlas",
+        help="Production platform (Atlas): backup, restore, recover, retention, health.",
+    )
+    p_atlas.add_argument("--json", action="store_true", help="JSON output format.")
+    atlas_sub = p_atlas.add_subparsers(dest="atlas_action", metavar="<action>")
+
+    atlas_sub.add_parser(
+        "status", help="Show Atlas subsystem status and observability metrics."
+    )
+    p_atlas_backup = atlas_sub.add_parser(
+        "backup", help="Create a metadata-only backup."
+    )
+    p_atlas_backup.add_argument(
+        "--device", dest="device_id", type=str, default=None, help="Device ID for context."
+    )
+    p_atlas_restore = atlas_sub.add_parser(
+        "restore", help="Restore a backup (dry-run by default)."
+    )
+    p_atlas_restore.add_argument("backup_id", type=str, help="Backup ID to restore.")
+    p_atlas_restore.add_argument(
+        "--apply",
+        dest="dry_run",
+        action="store_false",
+        help="Apply the restore (default is dry-run).",
+    )
+    atlas_sub.add_parser(
+        "recover", help="Run crash recovery for expired state."
+    )
+    p_atlas_retain = atlas_sub.add_parser(
+        "retention", help="Apply retention policies (dry-run by default)."
+    )
+    p_atlas_retain.add_argument(
+        "--apply",
+        dest="dry_run",
+        action="store_false",
+        help="Apply the retention (default is dry-run).",
+    )
+    atlas_sub.add_parser("health", help="Record a health snapshot.")
+    atlas_sub.add_parser("capabilities", help="List versioned Atlas capabilities.")
+    atlas_sub.add_parser("version", help="Show Atlas release information.")
+
+    # diagnostics (Phase 10)
+    p_diag = subparsers.add_parser(
+        "diagnostics",
+        help="Run deep Atlas diagnostics (subset of doctor).",
+    )
+    p_diag.add_argument("--json", action="store_true", help="JSON output format.")
+    p_diag.add_argument(
+        "--full", action="store_true", help="Run the full deep diagnostic suite."
+    )
+
+    # release (Phase 10)
+    p_rel = subparsers.add_parser(
+        "release", help="Check release-readiness against documented gates."
+    )
+    p_rel.add_argument("--json", action="store_true", help="JSON output format.")
+
     # identity
     p_ident = subparsers.add_parser("identity", help="Manage cryptographic device identities.")
     ident_sub = p_ident.add_subparsers(dest="identity_action", metavar="<action>")
@@ -606,6 +668,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_orchestrate(args, config)
         elif args.command == "capabilities":
             return cmd_capabilities(args, config)
+        elif args.command == "atlas":
+            if not getattr(args, "atlas_action", None):
+                args.atlas_action = "status"
+            return cmd_atlas(args, config)
+        elif args.command == "diagnostics":
+            return cmd_diagnostics(args, config)
+        elif args.command == "release":
+            return cmd_release(args, config)
         elif args.command == "console":
             return cmd_console(args, config)
         elif args.command == "audit":

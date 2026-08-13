@@ -340,3 +340,162 @@ methods on subsystems that have their own consent model
 
 All 11 checks pass on a healthy install.
 
+---
+
+## 7. Atlas Production Platform Security (Phase 10)
+
+> **Atlas is production hardening, NOT a new surveillance layer.**
+
+Atlas hardens the existing system through read-only integrity
+verification, deterministic crash recovery, and metadata-only
+backup. Atlas never bypasses Trust, Vista authorization, or
+Aegis system consent. Atlas never stores frame bytes, command
+strings, secrets, or private user content.
+
+### Atlas Forbidden Capabilities
+
+Atlas never enables, registers, or executes:
+
+* Covert monitoring.
+* Hidden or unauthorized screen capture.
+* Microphone or camera activation.
+* Location tracking.
+* Clipboard, message, or browser-history collection.
+* Bypass of Trust, Vista authorization, or Aegis system consent.
+* Remote input, shell execution, or arbitrary command execution.
+* Persistence of frame bytes, command strings, private keys,
+  session keys, passwords, OTPs, or any other sensitive
+  content.
+
+The `AtlasCapabilityRegistry` pre-populates 10 documented
+capability descriptors. Surveillance-style capability names
+are not present.
+
+### Atlas Backup Safety
+
+`AtlasBackupManager` produces metadata-only backups. The
+`BACKUP_ALLOWED_TABLES` set explicitly excludes
+`transport_messages` and any other sensitive table. The
+`BACKUP_FORBIDDEN_COLUMNS` map strips `private_key_pem` from
+the `identities` table.
+
+Backups never contain:
+
+* Private keys.
+* Session keys.
+* Plaintext screen frames.
+* Command strings.
+* Passwords, OTPs, tokens.
+* Surveillance data.
+
+The backup body is integrity-protected by a SHA-256 digest.
+The digest is recorded in the `atlas_backups` manifest. A
+backup with a mismatched digest is rejected by
+`verify_backup`.
+
+### Atlas Restore Safety
+
+`AtlasRestoreManager` is dry-run by default. It refuses to
+silently overwrite active state. It verifies the backup's
+integrity, format, and schema compatibility before applying
+any change. A restore with a mismatched digest, an unknown
+format, or an incompatible schema version is rejected.
+
+### Atlas Recovery Safety
+
+`AtlasRecoveryManager` performs deterministic recovery for
+interrupted operations. Recovery never resurrects:
+
+* Revoked trust relationships.
+* Expired authorization (Vista or Aegis).
+* Expired Aegis consent.
+
+Recovery marks expired state as `EXPIRED`. It never re-queues
+or re-executes any action. Recovery is fail-closed.
+
+### Atlas Integrity Verification
+
+`AtlasIntegrityVerifier` performs read-only checks:
+
+* SQLite integrity check.
+* Required tables are present (including the 5 Atlas tables).
+* Migration state is at the documented schema version.
+* Foreign keys are valid.
+* Forbidden columns are NOT present in any table.
+* Audit log is sanitized (no frame, keylog, password, etc.).
+* Identity table is non-empty.
+
+The `check_forbidden_columns` method verifies that the 5 new
+Atlas tables do not contain any column for sensitive content.
+This is verified by automated tests.
+
+### Atlas Observability Safety
+
+`AtlasObservability` and `AtlasMetrics` return only counts,
+statuses, and timestamps. They never include secrets, frame
+bytes, or private user content. The output is safe to log.
+
+### Atlas Manifest Safety
+
+`AtlasReleaseValidator.check_aegis_manifest_permissions` verifies
+that the Android companion's manifest declares only the
+documented minimum permissions. The forbidden set includes:
+
+* `android.permission.RECORD_AUDIO`
+* `android.permission.CAMERA`
+* `android.permission.ACCESS_FINE_LOCATION`
+* `android.permission.ACCESS_COARSE_LOCATION`
+* `android.permission.READ_CONTACTS`
+* `android.permission.READ_SMS`
+* `android.permission.BIND_ACCESSIBILITY_SERVICE`
+* `android.permission.SYSTEM_ALERT_WINDOW`
+* And others.
+
+This is verified by automated tests on every doctor run.
+
+### Atlas Threat Model
+
+Atlas is designed to defend against:
+
+* A user who runs `guardian doctor` and expects a meaningful
+  result. Atlas never reports fake successes.
+* A user who runs `guardian release` and expects a release-
+  readiness gate. Atlas never claims readiness when checks fail.
+* A user who runs `guardian atlas backup` and expects a
+  metadata-only backup. Atlas never includes sensitive content.
+* A user who runs `guardian atlas restore` and expects a safe
+  restore. Atlas never silently overwrites active state.
+* A user who runs `guardian atlas recover` and expects
+  deterministic recovery. Atlas never resurrects revoked
+  state.
+
+Atlas is NOT designed to defend against:
+
+* A user who has root access to the local machine. Root can
+  read the database file directly. The keys directory has
+  permissions `0700`, but root can read it.
+* A user who has physical access to the device. The keys
+  directory is only protected by file permissions.
+* A user who modifies the Python source code. The repository
+  is the source of truth; modifications invalidate the
+  integrity guarantees.
+
+### Atlas Doctor Coverage
+
+`guardian doctor` includes 9 new Atlas-specific checks:
+
+* `Atlas module` — every documented public symbol is present.
+* `Atlas database schema` — all 5 tables exist.
+* `Atlas capability registry` — the registry is non-empty.
+* `Atlas migration state` — schema is at v10.
+* `Atlas backup subsystem` — backup creation and verification
+  work.
+* `Atlas recovery subsystem` — recovery returns SUCCEEDED for
+  empty state.
+* `Atlas integrity verifier` — all integrity checks pass.
+* `Atlas observability` — observability collection returns
+  sane values.
+* `Atlas release validation` — basic release checks pass.
+
+All 9 checks pass on a healthy install.
+

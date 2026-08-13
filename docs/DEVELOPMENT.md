@@ -51,6 +51,9 @@ pytest tests/test_console_cli.py tests/test_devices_cli.py tests/test_console_se
 
 # Run Orion tests
 pytest tests/test_orion_*.py tests/test_migration_v9.py
+
+# Run Atlas tests
+pytest tests/test_atlas_*.py tests/test_migration_v10.py
 ```
 
 ---
@@ -197,3 +200,44 @@ additionally:
 13. Pass the new Orion unit tests in `tests/test_orion_*.py` and
     the new migration test in `tests/test_migration_v9.py`
     without regression.
+
+Any PR touching the Atlas production-hardening subsystem
+(Phase 10) must additionally:
+
+1. Verify that the `AtlasCapabilityRegistry` pre-populated set
+   includes only the documented subsystem names. Adding
+   surveillance-style capability names is forbidden.
+2. Verify that the `BACKUP_ALLOWED_TABLES` set explicitly
+   excludes `transport_messages` and any other sensitive
+   table. The `BACKUP_FORBIDDEN_COLUMNS` map must strip
+   `private_key_pem` from `identities`.
+3. Verify that the five Atlas database tables
+   (`atlas_backups`, `atlas_health`, `atlas_recovery`,
+   `atlas_capability_versions`, `atlas_retention`) have no
+   column for frame bytes, command strings, private keys,
+   session keys, passwords, OTPs, or any other sensitive
+   content. Use `PRAGMA table_info(...)` to inspect.
+4. Verify that `AtlasRecoveryManager` never resurrects
+   revoked trust, expired authorization, or expired Aegis
+   consent. Recovery marks expired state as `EXPIRED`; it
+   never re-queues or re-executes.
+5. Verify that the `AtlasReleaseValidator` checks the Android
+   manifest against the documented forbidden permission set.
+   Adding `RECORD_AUDIO`, `CAMERA`, `READ_SMS`, etc. is
+   forbidden.
+6. Verify that the `AtlasObservability` collector never
+   includes secrets, frame bytes, or private user content. The
+   output is metadata-only.
+7. Verify that `guardian doctor` reports 9 new Atlas-specific
+   checks: `Atlas module`, `Atlas database schema`,
+   `Atlas capability registry`, `Atlas migration state`,
+   `Atlas backup subsystem`, `Atlas recovery subsystem`,
+   `Atlas integrity verifier`, `Atlas observability`,
+   `Atlas release validation`. All 9 must pass on a healthy
+   install.
+8. Verify that `guardian release` reports `READY` only when
+   every documented gate passes. The release must not claim
+   readiness when checks fail.
+9. Pass the new Atlas unit tests in `tests/test_atlas_*.py`
+   and the new migration test in `tests/test_migration_v10.py`
+   without regression.

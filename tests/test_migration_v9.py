@@ -90,7 +90,8 @@ def test_migration_v9_idempotent(tmp_path: Path) -> None:
     mgr = MigrationManager(migrations=MIGRATIONS)
     newly = mgr.apply_migrations(db)
     assert "009_orion_schema" in newly
-    assert mgr.get_current_version(db) == 9
+    assert "010_atlas" in newly
+    assert mgr.get_current_version(db) == 10
 
     # Re-apply: no new migrations should be reported.
     newly2 = mgr.apply_migrations(db)
@@ -201,15 +202,15 @@ def test_migration_v9_insert_orion_action_with_idempotency(tmp_path: Path) -> No
         )
 
 
-def test_migration_full_chain_through_v9(tmp_path: Path) -> None:
-    """A fresh install through every migration 1 -> 9 works end-to-end."""
-    db_path = tmp_path / "v1_through_v9.db"
+def test_migration_full_chain_through_v10(tmp_path: Path) -> None:
+    """A fresh install through every migration 1 -> 10 works end-to-end."""
+    db_path = tmp_path / "v1_through_v10.db"
     db = Database(db_path)
 
     mgr = MigrationManager(migrations=MIGRATIONS)
     newly = mgr.apply_migrations(db)
-    assert len(newly) == 8  # 1, 2, 3, 4, 6, 7, 8, 9
-    assert mgr.get_current_version(db) == 9
+    assert len(newly) == 9  # 1, 2, 3, 4, 6, 7, 8, 9, 10
+    assert mgr.get_current_version(db) == 10
 
     tables = [r[0] for r in db.fetchall("SELECT name FROM sqlite_master WHERE type='table';")]
     for required in (

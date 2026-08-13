@@ -69,15 +69,16 @@ def test_migration_v1_through_v6(tmp_path: Path) -> None:
     # 5. Apply Migration 6 (Nexus)
     mgr_v6 = MigrationManager(migrations=MIGRATIONS)
     newly_v6 = mgr_v6.apply_migrations(db)
-    # Migration 7 (Vista), Migration 8 (Aegis), and Migration 9 (Orion)
-    # are also pending in MIGRATIONS, so four new migrations are
-    # applied in this step.
-    assert len(newly_v6) == 4
+    # Migration 7 (Vista), Migration 8 (Aegis), Migration 9 (Orion),
+    # and Migration 10 (Atlas) are also pending in MIGRATIONS, so
+    # five new migrations are applied in this step.
+    assert len(newly_v6) == 5
     assert "006_nexus_transport" in newly_v6
     assert "007_vista_screen_sessions" in newly_v6
     assert "008_aegis_screen_capture" in newly_v6
     assert "009_orion_schema" in newly_v6
-    assert mgr_v6.get_current_version(db) == 9
+    assert "010_atlas" in newly_v6
+    assert mgr_v6.get_current_version(db) == 10
 
     # Verify existing records from previous phases are preserved
     assert db.fetchone("SELECT * FROM identities WHERE id = 'GM-P-83A1F72C';") is not None
@@ -126,6 +127,6 @@ def test_migration_v1_through_v6(tmp_path: Path) -> None:
     assert "idx_orion_events_device" in indexes
     assert "idx_orion_actions_status" in indexes
 
-    # Idempotency: applying again applies 0 new migrations and version remains 9
+    # Idempotency: applying again applies 0 new migrations and version remains 10
     assert len(mgr_v6.apply_migrations(db)) == 0
-    assert mgr_v6.get_current_version(db) == 9
+    assert mgr_v6.get_current_version(db) == 10

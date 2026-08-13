@@ -1342,6 +1342,212 @@ def cmd_doctor(args: argparse.Namespace, config: GuardianConfig) -> int:
     if not orion_handlers_ok:
         critical_failure = True
 
+    # 39. Atlas Module Check (Phase 10)
+    atlas_mod_ok = True
+    atlas_mod_msg: str | None = None
+    try:
+        import guardianmesh.atlas as _atlas_module
+
+        for required in (
+            "AtlasController",
+            "AtlasBackupManager",
+            "AtlasRestoreManager",
+            "AtlasRecoveryManager",
+            "AtlasIntegrityVerifier",
+            "AtlasLifecycleValidator",
+            "AtlasHealthMonitor",
+            "AtlasDiagnostics",
+            "AtlasObservability",
+            "AtlasMetrics",
+            "AtlasRetentionManager",
+            "AtlasReleaseValidator",
+            "AtlasCompatibilityChecker",
+            "AtlasCapabilityRegistry",
+        ):
+            if not hasattr(_atlas_module, required):
+                atlas_mod_ok = False
+                atlas_mod_msg = f"Atlas module missing '{required}'."
+                break
+    except Exception as e:
+        atlas_mod_ok = False
+        atlas_mod_msg = f"Failed to import Atlas module: {e}"
+
+    checks.append(("Atlas module", atlas_mod_ok, atlas_mod_msg))
+    if not atlas_mod_ok:
+        critical_failure = True
+
+    # 40. Atlas Database Schema Check (Phase 10)
+    atlas_schema_ok = True
+    atlas_schema_msg: str | None = None
+    try:
+        if not db_ok:
+            atlas_schema_ok = False
+            atlas_schema_msg = "Database unavailable for Atlas schema check."
+        else:
+            tables = [
+                r[0]
+                for r in db.fetchall(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name LIKE 'atlas_%';"
+                )
+            ]
+            for required in (
+                "atlas_backups",
+                "atlas_health",
+                "atlas_recovery",
+                "atlas_capability_versions",
+                "atlas_retention",
+            ):
+                if required not in tables:
+                    atlas_schema_ok = False
+                    atlas_schema_msg = f"Missing Atlas table: {required}"
+                    break
+    except Exception as e:
+        atlas_schema_ok = False
+        atlas_schema_msg = f"Atlas schema check error: {e}"
+
+    checks.append(("Atlas database schema", atlas_schema_ok, atlas_schema_msg))
+    if not atlas_schema_ok:
+        critical_failure = True
+
+    # 41. Atlas Capability Registry Check
+    atlas_cap_ok = True
+    atlas_cap_msg: str | None = None
+    try:
+        from guardianmesh.atlas.capabilities import (
+            DEFAULT_ATLAS_CAPABILITIES,
+        )
+
+        if len(DEFAULT_ATLAS_CAPABILITIES) < 1:
+            atlas_cap_ok = False
+            atlas_cap_msg = "Atlas capability registry is empty."
+    except Exception as e:
+        atlas_cap_ok = False
+        atlas_cap_msg = f"Atlas capability check error: {e}"
+
+    checks.append(("Atlas capability registry", atlas_cap_ok, atlas_cap_msg))
+    if not atlas_cap_ok:
+        critical_failure = True
+
+    # 42. Atlas Migration State Check
+    atlas_mig_ok = True
+    atlas_mig_msg: str | None = None
+    try:
+        current_v = MigrationManager().get_current_version(db)
+        if current_v < 10:
+            atlas_mig_ok = False
+            atlas_mig_msg = f"Database at v{current_v}; Atlas requires v10."
+    except Exception as e:
+        atlas_mig_ok = False
+        atlas_mig_msg = f"Atlas migration check error: {e}"
+
+    checks.append(("Atlas migration state", atlas_mig_ok, atlas_mig_msg))
+    if not atlas_mig_ok:
+        critical_failure = True
+
+    # 43. Atlas Backup Subsystem Check
+    atlas_backup_ok = True
+    atlas_backup_msg: str | None = None
+    try:
+        from pathlib import Path
+
+        from guardianmesh.atlas.backup import AtlasBackupManager
+
+        Path(config.data_dir / "atlas_backups").mkdir(parents=True, exist_ok=True)
+        atlas_backup_mgr = AtlasBackupManager(
+            db,
+            config.data_dir / "atlas_backups",
+            orion_version="1.0.0",
+        )
+        atlas_info = atlas_backup_mgr.create_backup()
+        ok, _msg = atlas_backup_mgr.verify_backup(atlas_info.backup_id)
+        if not ok:
+            atlas_backup_ok = False
+            atlas_backup_msg = "Atlas backup verification failed."
+    except Exception as e:
+        atlas_backup_ok = False
+        atlas_backup_msg = f"Atlas backup error: {e}"
+
+    checks.append(("Atlas backup subsystem", atlas_backup_ok, atlas_backup_msg))
+    if not atlas_backup_ok:
+        critical_failure = True
+
+    # 44. Atlas Recovery Subsystem Check
+    atlas_rec_ok = True
+    atlas_rec_msg: str | None = None
+    try:
+        from guardianmesh.atlas.recovery import AtlasRecoveryManager
+
+        records = AtlasRecoveryManager(db).recover_all()
+        for r in records:
+            if r.status not in ("SUCCEEDED",):
+                atlas_rec_ok = False
+                atlas_rec_msg = f"Recovery {r.operation} returned {r.status}."
+                break
+    except Exception as e:
+        atlas_rec_ok = False
+        atlas_rec_msg = f"Atlas recovery error: {e}"
+
+    checks.append(("Atlas recovery subsystem", atlas_rec_ok, atlas_rec_msg))
+    if not atlas_rec_ok:
+        critical_failure = True
+
+    # 45. Atlas Integrity Verifier Check
+    atlas_int_ok = True
+    atlas_int_msg: str | None = None
+    try:
+        from guardianmesh.atlas.integrity import AtlasIntegrityVerifier
+
+        for c in AtlasIntegrityVerifier(db).run_all():
+            if not c.ok:
+                atlas_int_ok = False
+                atlas_int_msg = f"Integrity check failed: {c.name} ({c.reason})"
+                break
+    except Exception as e:
+        atlas_int_ok = False
+        atlas_int_msg = f"Atlas integrity error: {e}"
+
+    checks.append(("Atlas integrity verifier", atlas_int_ok, atlas_int_msg))
+    if not atlas_int_ok:
+        critical_failure = True
+
+    # 46. Atlas Observability Check
+    atlas_obs_ok = True
+    atlas_obs_msg: str | None = None
+    try:
+        from guardianmesh.atlas.observability import AtlasObservability
+
+        metrics = AtlasObservability(db).collect()
+        for sub_info in metrics.values():
+            if not isinstance(sub_info, dict):
+                continue
+    except Exception as e:
+        atlas_obs_ok = False
+        atlas_obs_msg = f"Atlas observability error: {e}"
+
+    checks.append(("Atlas observability", atlas_obs_ok, atlas_obs_msg))
+    if not atlas_obs_ok:
+        critical_failure = True
+
+    # 47. Atlas Release Validation Check
+    atlas_rel_ok = True
+    atlas_rel_msg: str | None = None
+    try:
+        from guardianmesh.atlas.release import AtlasReleaseValidator
+
+        for c in AtlasReleaseValidator(db).basic_checks():
+            if not c.ok:
+                atlas_rel_ok = False
+                atlas_rel_msg = f"Release check failed: {c.name} ({c.reason})"
+                break
+    except Exception as e:
+        atlas_rel_ok = False
+        atlas_rel_msg = f"Atlas release check error: {e}"
+
+    checks.append(("Atlas release validation", atlas_rel_ok, atlas_rel_msg))
+    if not atlas_rel_ok:
+        critical_failure = True
+
     # Output formatted results
     for name, ok, reason in checks:
         indicator = "✓" if ok else "✗"
@@ -3466,4 +3672,265 @@ def cmd_capabilities(args: argparse.Namespace, config: GuardianConfig) -> int:
     print("Negative (always False):")
     for cap in caps.negative_capabilities():
         print(f"  • {cap.value}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 10: Atlas production platform
+# ---------------------------------------------------------------------------
+
+
+def _build_atlas_controller(
+    config: GuardianConfig, *, backup_dir: str | None = None
+) -> tuple[Database | None, Any | None, str | None]:
+    """Build an :class:`AtlasController` wired to the local database."""
+    from guardianmesh.atlas.controller import AtlasController
+
+    if not config.database_path.is_file():
+        return None, None, None
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    if backup_dir is None:
+        backup_dir = str(config.data_dir / "atlas_backups")
+    from pathlib import Path
+
+    Path(backup_dir).mkdir(parents=True, exist_ok=True)
+    controller = AtlasController(
+        db,
+        orion_version=__version__,
+        schema_version="10",
+        backup_dir=backup_dir,
+    )
+    return db, controller, backup_dir
+
+
+def cmd_atlas(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Phase 10: Atlas production platform subcommand.
+
+    Subcommands: status, backup, restore, recover, retention,
+    health, capabilities, version.
+    """
+    subcmd = getattr(args, "atlas_action", None) or "status"
+    format_json = getattr(args, "json", False) is True
+
+    db, controller, _backup_dir = _build_atlas_controller(config)
+    if db is None or controller is None:
+        if format_json:
+            print(json.dumps({"error": "Database not initialized."}, indent=2))
+        else:
+            print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+
+    if subcmd == "status":
+        m = controller.collect_observability()
+        if format_json:
+            print(json.dumps(m, indent=2, default=str))
+            return 0
+        print("GuardianMesh Atlas")
+        print_divider()
+        for subsystem, info in m.items():
+            if isinstance(info, dict):
+                counts = ", ".join(
+                    f"{k}={v}" for k, v in info.items() if isinstance(v, (int, float, str))
+                )
+                print(f"  {subsystem:<12} {counts}")
+        return 0
+
+    elif subcmd == "backup":
+        device_id = getattr(args, "device_id", None)
+        info = controller.backup(device_id=device_id)
+        if format_json:
+            print(json.dumps(info, indent=2, default=str))
+            return 0
+        print("Atlas Backup Created")
+        print_divider()
+        for k, v in info.items():
+            print(f"  {k:<14} {v}")
+        return 0
+
+    elif subcmd == "restore":
+        backup_id = getattr(args, "backup_id", None)
+        dry_run = getattr(args, "dry_run", True)
+        if not backup_id:
+            print("Usage: guardian atlas restore <backup_id> [--dry-run]")
+            return 1
+        try:
+            plan = controller.restore(backup_id, dry_run=dry_run)
+        except Exception as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Restore failed: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps(plan, indent=2, default=str))
+            return 0
+        print(f"Atlas Restore {'Plan' if plan.get('dry_run') else 'Applied'}")
+        print_divider()
+        for k, v in plan.items():
+            if isinstance(v, (dict, list)):
+                continue
+            print(f"  {k:<14} {v}")
+        return 0
+
+    elif subcmd == "recover":
+        records = controller.recover()
+        if format_json:
+            print(json.dumps(records, indent=2, default=str))
+            return 0
+        print("Atlas Recovery")
+        print_divider()
+        for r in records:
+            print(
+                f"  {r['operation']:<30} actions={r['actions_taken']} status={r['status']}"
+            )
+        return 0
+
+    elif subcmd == "retention":
+        dry_run = getattr(args, "dry_run", True)
+        plan = controller.run_retention(dry_run=dry_run)
+        if format_json:
+            print(json.dumps(plan, indent=2, default=str))
+            return 0
+        print(f"Atlas Retention ({'DRY RUN' if plan.get('dry_run') else 'APPLIED'})")
+        print_divider()
+        for table, info in plan.get("tables", {}).items():
+            print(
+                f"  {table:<22} days={info.get('policy_days')} "
+                f"to_delete={info.get('rows_to_delete')}"
+            )
+        return 0
+
+    elif subcmd == "health":
+        snapshot = controller.health_snapshot()
+        if format_json:
+            print(json.dumps(snapshot, indent=2, default=str))
+            return 0
+        print("Atlas Health Snapshot")
+        print_divider()
+        for sub, info in snapshot.get("subsystems", {}).items():
+            print(f"  {sub:<12} {info.get('status')}")
+        return 0
+
+    elif subcmd == "capabilities":
+        caps = controller.capabilities.all()
+        if format_json:
+            print(
+                json.dumps(
+                    {"capabilities": [c.to_dict() for c in caps]},
+                    indent=2,
+                    default=str,
+                )
+            )
+            return 0
+        print("Atlas Capabilities")
+        print_divider()
+        for c in caps:
+            risk = c.risk_level.value if hasattr(c.risk_level, "value") else c.risk_level
+            reqs = []
+            if c.requires_trust:
+                reqs.append("TRUST")
+            if c.requires_vista:
+                reqs.append("VISTA")
+            if c.requires_aegis:
+                reqs.append("AEGIS")
+            reqs_str = "+".join(reqs) if reqs else "none"
+            print(f"  {c.capability_name:<12} v{c.version} risk={risk} requires={reqs_str}")
+        return 0
+
+    elif subcmd == "version":
+        info = controller.release_info()
+        if format_json:
+            print(json.dumps(info, indent=2, default=str))
+            return 0
+        print(f"GuardianMesh {__version__} ({__phase__})")
+        print_divider()
+        for k, v in info.items():
+            if isinstance(v, (dict, list)):
+                continue
+            print(f"  {k:<20} {v}")
+        return 0
+
+    print("Usage: guardian atlas [status|backup|restore|recover|retention|health|capabilities|version]")
+    return 0
+
+
+def cmd_diagnostics(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Phase 10: Atlas diagnostics — full deep check."""
+    from guardianmesh.atlas.controller import AtlasController
+
+    format_json = getattr(args, "json", False) is True
+    if not config.database_path.is_file():
+        if format_json:
+            print(json.dumps({"error": "Database not initialized."}, indent=2))
+        else:
+            print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    controller = AtlasController(
+        db,
+        orion_version=__version__,
+        schema_version="10",
+        backup_dir=str(config.data_dir / "atlas_backups"),
+    )
+    full = getattr(args, "full", False)
+    report = controller.diagnose(full=full)
+    if format_json:
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    print("GuardianMesh Diagnostics")
+    print_divider()
+    for c in report["checks"]:
+        indicator = "✓" if c["ok"] else "✗"
+        print(f"  {c['name']:<32} {indicator}")
+        if c.get("reason") and not c["ok"]:
+            print(f"    Reason: {c['reason']}")
+    return 1 if report["critical_failure"] else 0
+
+
+def cmd_release(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Phase 10: release-readiness check."""
+    from guardianmesh.atlas.controller import AtlasController
+
+    format_json = getattr(args, "json", False) is True
+    if not config.database_path.is_file():
+        if format_json:
+            print(json.dumps({"error": "Database not initialized."}, indent=2))
+        else:
+            print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    controller = AtlasController(
+        db,
+        orion_version=__version__,
+        schema_version="10",
+        backup_dir=str(config.data_dir / "atlas_backups"),
+    )
+    full = getattr(args, "full", True)
+    report = controller.diagnose(full=full)
+    failed = [c for c in report["checks"] if not c["ok"]]
+    if format_json:
+        print(
+            json.dumps(
+                {
+                    "ready": not failed,
+                    "failed_checks": [c["name"] for c in failed],
+                    "passed_checks": [c["name"] for c in report["checks"] if c["ok"]],
+                    "summary": report,
+                },
+                indent=2,
+                default=str,
+            )
+        )
+        return 0 if not failed else 1
+    if failed:
+        print("Release: NOT READY", file=sys.stderr)
+        for c in failed:
+            print(f"  ✗ {c['name']}: {c.get('reason')}", file=sys.stderr)
+        return 1
+    print("Release: READY")
+    print_divider()
+    print(f"  {len(report['checks'])} checks passed")
     return 0

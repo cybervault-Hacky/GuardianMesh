@@ -504,6 +504,91 @@ MIGRATIONS: Sequence[Migration] = [
             ON orion_reconciliation(started_at);
         """,
     ),
+    Migration(
+        version=10,
+        name="010_atlas",
+        up_sql="""
+        CREATE TABLE IF NOT EXISTS atlas_backups (
+            backup_id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            orion_version TEXT NOT NULL,
+            backup_format TEXT NOT NULL DEFAULT 'atlas-1.0',
+            device_id TEXT,
+            integrity_digest TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'VALID',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_atlas_backups_created
+            ON atlas_backups(created_at);
+        CREATE INDEX IF NOT EXISTS idx_atlas_backups_device
+            ON atlas_backups(device_id);
+
+        CREATE TABLE IF NOT EXISTS atlas_health (
+            health_id TEXT PRIMARY KEY,
+            subsystem TEXT NOT NULL,
+            status TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            summary TEXT NOT NULL DEFAULT '',
+            remediation TEXT NOT NULL DEFAULT '',
+            schema_version TEXT NOT NULL DEFAULT '1.0'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_atlas_health_subsystem
+            ON atlas_health(subsystem);
+        CREATE INDEX IF NOT EXISTS idx_atlas_health_timestamp
+            ON atlas_health(timestamp);
+
+        CREATE TABLE IF NOT EXISTS atlas_recovery (
+            recovery_id TEXT PRIMARY KEY,
+            device_id TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            operation TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            actions_taken INTEGER NOT NULL DEFAULT 0,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_atlas_recovery_device
+            ON atlas_recovery(device_id);
+        CREATE INDEX IF NOT EXISTS idx_atlas_recovery_status
+            ON atlas_recovery(status);
+
+        CREATE TABLE IF NOT EXISTS atlas_capability_versions (
+            capability_id TEXT PRIMARY KEY,
+            capability_name TEXT NOT NULL,
+            version TEXT NOT NULL DEFAULT '1.0',
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            requires_trust INTEGER NOT NULL DEFAULT 0,
+            requires_vista INTEGER NOT NULL DEFAULT 0,
+            requires_aegis INTEGER NOT NULL DEFAULT 0,
+            risk_level TEXT NOT NULL DEFAULT 'LOW',
+            schema_version TEXT NOT NULL DEFAULT '1.0',
+            updated_at TEXT NOT NULL,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_atlas_capability_versions_status
+            ON atlas_capability_versions(status);
+        CREATE INDEX IF NOT EXISTS idx_atlas_capability_versions_risk
+            ON atlas_capability_versions(risk_level);
+
+        CREATE TABLE IF NOT EXISTS atlas_retention (
+            retention_id TEXT PRIMARY KEY,
+            target_table TEXT NOT NULL,
+            retention_days INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_atlas_retention_target
+            ON atlas_retention(target_table);
+        """,
+    ),
 ]
 
 

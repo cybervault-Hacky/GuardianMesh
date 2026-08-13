@@ -98,25 +98,26 @@ def test_migration_v7_idempotent(tmp_path: Path) -> None:
     assert "007_vista_screen_sessions" in newly
     assert "008_aegis_screen_capture" in newly
     assert "009_orion_schema" in newly
-    assert mgr.get_current_version(db) == 9
+    assert "010_atlas" in newly
+    assert mgr.get_current_version(db) == 10
 
     # Re-apply: no new migrations should be reported.
     newly2 = mgr.apply_migrations(db)
     assert newly2 == []
-    assert mgr.get_current_version(db) == 9
+    assert mgr.get_current_version(db) == 10
 
 
-def test_migration_full_chain_through_v9(tmp_path: Path) -> None:
-    """Run a fresh install through every migration 1 -> 9 and ensure nothing is broken."""
-    db_path = tmp_path / "v1_through_v9.db"
+def test_migration_full_chain_through_v10(tmp_path: Path) -> None:
+    """Run a fresh install through every migration 1 -> 10 and ensure nothing is broken."""
+    db_path = tmp_path / "v1_through_v10.db"
     db = Database(db_path)
 
     mgr = MigrationManager(migrations=MIGRATIONS)
     newly = mgr.apply_migrations(db)
-    # MIGRATIONS is the documented 8-version list: 1, 2, 3, 4, 6, 7, 8, 9.
+    # MIGRATIONS is the documented 9-version list: 1, 2, 3, 4, 6, 7, 8, 9, 10.
     # (Version 5 is reserved / unused; this is the documented chain.)
-    assert len(newly) == 8
-    assert mgr.get_current_version(db) == 9
+    assert len(newly) == 9
+    assert mgr.get_current_version(db) == 10
 
     tables = [r[0] for r in db.fetchall("SELECT name FROM sqlite_master WHERE type='table';")]
     for required in (

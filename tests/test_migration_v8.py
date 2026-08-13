@@ -82,7 +82,8 @@ def test_migration_v8_idempotent(tmp_path: Path) -> None:
     newly = mgr.apply_migrations(db)
     assert "008_aegis_screen_capture" in newly
     assert "009_orion_schema" in newly
-    assert mgr.get_current_version(db) == 9
+    assert "010_atlas" in newly
+    assert mgr.get_current_version(db) == 10
 
     # Re-apply: no new migrations should be reported.
     newly2 = mgr.apply_migrations(db)
@@ -107,15 +108,15 @@ def test_migration_v8_never_persists_payload(tmp_path: Path) -> None:
     assert forbidden.isdisjoint(set(cols))
 
 
-def test_migration_full_chain_through_v8(tmp_path: Path) -> None:
-    """A fresh install through every migration 1 -> 8 works end-to-end."""
-    db_path = tmp_path / "v1_through_v8.db"
+def test_migration_full_chain_through_v10(tmp_path: Path) -> None:
+    """A fresh install through every migration 1 -> 10 works end-to-end."""
+    db_path = tmp_path / "v1_through_v10.db"
     db = Database(db_path)
 
     mgr = MigrationManager(migrations=MIGRATIONS)
     newly = mgr.apply_migrations(db)
-    assert len(newly) == 8  # 1, 2, 3, 4, 6, 7, 8, 9
-    assert mgr.get_current_version(db) == 9
+    assert len(newly) == 9  # 1, 2, 3, 4, 6, 7, 8, 9, 10
+    assert mgr.get_current_version(db) == 10
 
     tables = [r[0] for r in db.fetchall("SELECT name FROM sqlite_master WHERE type='table';")]
     for required in (

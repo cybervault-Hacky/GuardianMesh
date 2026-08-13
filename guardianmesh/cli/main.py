@@ -263,6 +263,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_screen_diag.add_argument("--json", action="store_true", help="JSON output format.")
 
+    p_screen_providers = screen_sub.add_parser(
+        "providers",
+        help="List available Android capture providers (metadata only).",
+    )
+    p_screen_providers.add_argument(
+        "--json", action="store_true", help="JSON output format."
+    )
+
+    p_screen_limits = screen_sub.add_parser(
+        "limits", help="Show the documented Aegis hard limits."
+    )
+    p_screen_limits.add_argument(
+        "--json", action="store_true", help="JSON output format."
+    )
+
     # identity
     p_ident = subparsers.add_parser("identity", help="Manage cryptographic device identities.")
     ident_sub = p_ident.add_subparsers(dest="identity_action", metavar="<action>")

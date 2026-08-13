@@ -107,3 +107,44 @@ Any PR touching the Vista screen subsystem (Phase 7) must additionally:
    for screen capture and that it never claims
    `is_real_capture = True` unless an actual native capture is
    wired in.
+
+Any PR touching the Aegis screen-capture subsystem (Phase 8) must
+additionally:
+
+1. Verify that the `MediaProjection` system consent is **GRANTED**
+   before any frame is delivered to the pipeline.
+2. Verify that the foreground service notification is visible for
+   the entire active session and exposes the `STOP SHARING` action.
+3. Verify that local stop works without contacting the parent
+   (the companion must tear the pipeline down locally).
+4. Verify that the companion's Android manifest declares only the
+   documented minimum permissions and adds none of the following:
+   `INTERNET` (not required for the loopback Nexus path), `RECORD_AUDIO`,
+   `CAMERA`, `ACCESS_FINE_LOCATION`, `READ_CONTACTS`, `READ_SMS`,
+   `BIND_ACCESSIBILITY_SERVICE`, `SYSTEM_ALERT_WINDOW`,
+   `MANAGE_EXTERNAL_STORAGE`, `READ_CALL_LOG`.
+5. Verify that frame bytes never appear in the `aegis_sessions`
+   database table, in the audit log, in any log file, or in any
+   exception message.
+6. Verify that the `AegisSessionInfo` model exposes no
+   payload-bearing field.
+7. Verify that the `FrameMetrics` snapshot contains no frame bytes
+   and is exposed through `AegisController.diagnostics()` only.
+8. Verify that the `BoundedFrameQueue` applies `DROP_OLDEST`
+   backpressure and never grows beyond the documented queue size.
+9. Verify that bounded resources (10 FPS, 1280x720, 4 MiB encoded
+   frame, 30 queued frames) are enforced at every pipeline stage.
+10. Verify that the `ScreenMessageType` allowlist remains at seven
+    narrowly-scoped names. No `SCREEN_CONTROL`, `REMOTE_INPUT`,
+    `EXECUTE`, `SHELL`, `COMMAND` additions.
+11. Verify that the companion never invokes the production
+    `AndroidMediaCodecEncoder` from the Python control plane
+    (it must raise `AegisEncoderError`).
+12. Verify that `guardian doctor` reports the Aegis platform
+    honestly on Linux: it must show
+    `Android screen provider: integration adapter only` as a Notice,
+    not a failure, and must never falsely report real Android
+    capture as operational.
+13. Pass the new Aegis unit tests in `tests/test_aegis_*.py` and
+    the new migration test in `tests/test_migration_v8.py` without
+    regression.

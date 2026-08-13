@@ -1,13 +1,13 @@
 """GuardianMesh — Consent-based parental device supervision system.
 
-Phase 7: Vista v0.7.0
-Consent-Based View-Only Screen Sessions.
+Phase 8: Aegis v0.8.0
+Production Android Companion & Consent-Gated Screen Capture.
 """
 
 from __future__ import annotations
 
-__version__ = "0.7.0"
-__phase__ = "Vista"
+__version__ = "0.8.0"
+__phase__ = "Aegis"
 __app_name__ = "GuardianMesh"
 
 __all__ = [

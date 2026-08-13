@@ -102,3 +102,85 @@ the project.
     `shared_secret`, `ciphertext`, `nonce_hex`, etc.). The
     `test_audit_log_never_contains_frame_payload` test verifies that
     a unique frame payload is never recorded in any audit event.
+
+
+---
+
+## 5. Aegis Android Companion Security (Phase 8)
+
+The Aegis subsystem is the only GuardianMesh feature that ever
+performs real ``MediaProjection`` capture. Its security and privacy
+model is the strictest in the project.
+
+> **Aegis is a consent-based screen-sharing companion, NOT a surveillance engine.**
+
+1. **Three-Key Consent Gate**. Capture is forbidden unless all three
+   are present and unexpired:
+   - **Trust** (Phase 2): the device is in the trusted registry.
+   - **Authorization** (Phase 7): the child has approved the view in
+     GuardianMesh.
+   - **System consent** (Phase 8): the child has tapped **Allow** in
+     the Android ``MediaProjection`` system dialog.
+2. **No New Encryption Protocol**. The companion's ``NexusClient``
+   reuses Phase 6 primitives. No new cryptographic code is
+   introduced in Aegis.
+3. **No Bypass of OS Consent**. The companion is forbidden from
+   bypassing the Android ``MediaProjection`` system dialog. The
+   consent flow is documented in
+   ``android/aegis/README.md`` and the relevant Kotlin files.
+4. **No Hidden APIs**. The companion uses only public Android APIs.
+   No root. No Magisk. No system-level bypass. The manifest
+   declares only the documented minimum permissions.
+5. **No Remote Control Protocol**. The ``ScreenMessageType`` allowlist
+   (Phase 7) contains exactly seven narrowly-scoped names. The
+   companion's ``ScreenTransportAdapter`` produces only
+   ``SCREEN_FRAME`` and metadata over the existing Nexus transport.
+6. **Foreground Service Indicator**. The companion MUST start a
+   foreground service with a persistent notification before
+   delivering frames and MUST stop the service the moment the
+   session ends. The notification exposes a ``STOP SHARING`` action
+   that performs an immediate local cancellation.
+7. **Bounded Session Lifetime**. The default authorization lifetime
+   is 5 minutes (300 s) and the hard cap is 1 hour (3600 s).
+   Inactivity timeouts and trust revocation terminate the session
+   immediately.
+8. **No Frame Persistence**. The companion never writes frame bytes
+   to disk. Frames exist only in the in-memory ``BoundedFrameQueue``
+   for the duration of one frame processing cycle. The
+   ``aegis_sessions`` database table stores metadata only.
+9. **Strict Frame Validation**. Every ``ScreenFrame`` is rejected if
+   any of the following holds: invalid protocol version, invalid
+   ``device_id`` format, empty ``session_id``, non-positive sequence,
+   non-positive width/height, oversized resolution, oversized
+   payload, mismatched ``payload_size`` vs ``len(payload)``,
+   invalid ``captured_at`` timestamp.
+10. **Bounded Resources**. Maximum 10 FPS, 1280x720, 4 MiB encoded
+    frame, 30 queued frames, ``DROP_OLDEST`` backpressure. Memory
+    usage is bounded by the queue capacity plus the size of one
+    in-flight frame.
+11. **Audit Redaction**. The Python ``AuditLogger`` redaction list
+    includes every known sensitive key. The Kotlin ``RedactionRules``
+    mirror the Python list. The ``test_audit_log_never_contains_frame_payload``
+    test verifies that a unique frame payload is never recorded in
+    any audit event.
+12. **Bounded Metrics**. The companion records counters, latencies,
+    and queue stats. Metrics NEVER contain frame bytes, screenshot
+    blobs, or any captured screen content.
+13. **Local Stop Works Without Network**. The companion's
+    ``STOP SHARING`` notification action tears the pipeline down
+    locally — the action is honoured even if the Nexus transport is
+    unavailable. The companion then notifies the parent when the
+    network is available.
+14. **Permissions Minimum**. The Android manifest declares only
+    ``FOREGROUND_SERVICE``, ``FOREGROUND_SERVICE_MEDIA_PROJECTION``,
+    and ``POST_NOTIFICATIONS``. None of the following are declared:
+    ``INTERNET`` (not needed; the companion uses the existing
+    Nexus loopback or LAN), ``RECORD_AUDIO``, ``CAMERA``,
+    ``ACCESS_FINE_LOCATION``, ``READ_CONTACTS``, ``READ_SMS``,
+    ``BIND_ACCESSIBILITY_SERVICE``, ``SYSTEM_ALERT_WINDOW``,
+    ``MANAGE_EXTERNAL_STORAGE``, ``READ_CALL_LOG``.
+15. **Honest Doctor**. ``guardian doctor`` reports the Aegis
+    platform honestly. On Linux it shows
+    ``Android screen provider: integration adapter only`` as a Notice
+    (not a failure). It never falsely reports real Android capture
+    as operational from Linux/Termux.

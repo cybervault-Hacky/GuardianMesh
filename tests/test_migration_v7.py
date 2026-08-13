@@ -29,6 +29,12 @@ def test_migration_v7_creates_screen_sessions(tmp_path: Path) -> None:
     assert newly == ["007_vista_screen_sessions"]
     assert mgr_v7.get_current_version(db) == 7
 
+    # Apply Migration 8 (Aegis) on top.
+    mgr_v8 = MigrationManager(migrations=[MIGRATIONS[6]])
+    newly8 = mgr_v8.apply_migrations(db)
+    assert newly8 == ["008_aegis_screen_capture"]
+    assert mgr_v8.get_current_version(db) == 8
+
     # Verify the table exists.
     tables = [r[0] for r in db.fetchall("SELECT name FROM sqlite_master WHERE type='table';")]
     assert "screen_sessions" in tables
@@ -40,6 +46,9 @@ def test_migration_v7_creates_screen_sessions(tmp_path: Path) -> None:
     assert "idx_screen_sessions_state" in indexes
     assert "idx_screen_sessions_requested" in indexes
     assert "idx_screen_sessions_active_device" in indexes
+
+    # Verify Migration 8 added aegis_sessions.
+    assert "aegis_sessions" in tables
 
     # Verify CHECK constraint on state.
     db.execute(
@@ -87,25 +96,26 @@ def test_migration_v7_idempotent(tmp_path: Path) -> None:
     mgr = MigrationManager(migrations=MIGRATIONS)
     newly = mgr.apply_migrations(db)
     assert "007_vista_screen_sessions" in newly
-    assert mgr.get_current_version(db) == 7
+    assert "008_aegis_screen_capture" in newly
+    assert mgr.get_current_version(db) == 8
 
     # Re-apply: no new migrations should be reported.
     newly2 = mgr.apply_migrations(db)
     assert newly2 == []
-    assert mgr.get_current_version(db) == 7
+    assert mgr.get_current_version(db) == 8
 
 
-def test_migration_full_chain_through_v7(tmp_path: Path) -> None:
-    """Run a fresh install through every migration 1 -> 7 and ensure nothing is broken."""
-    db_path = tmp_path / "v1_through_v7.db"
+def test_migration_full_chain_through_v8(tmp_path: Path) -> None:
+    """Run a fresh install through every migration 1 -> 8 and ensure nothing is broken."""
+    db_path = tmp_path / "v1_through_v8.db"
     db = Database(db_path)
 
     mgr = MigrationManager(migrations=MIGRATIONS)
     newly = mgr.apply_migrations(db)
-    # MIGRATIONS is the documented 6-version list: 1, 2, 3, 4, 6, 7.
+    # MIGRATIONS is the documented 7-version list: 1, 2, 3, 4, 6, 7, 8.
     # (Version 5 is reserved / unused; this is the documented chain.)
-    assert len(newly) == 6
-    assert mgr.get_current_version(db) == 7
+    assert len(newly) == 7
+    assert mgr.get_current_version(db) == 8
 
     tables = [r[0] for r in db.fetchall("SELECT name FROM sqlite_master WHERE type='table';")]
     for required in (
@@ -124,5 +134,6 @@ def test_migration_full_chain_through_v7(tmp_path: Path) -> None:
         "transport_messages",
         "transport_sequences",
         "screen_sessions",
+        "aegis_sessions",
     ):
         assert required in tables, f"Missing required table: {required}"

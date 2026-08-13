@@ -8,20 +8,22 @@ GuardianMesh is architected as a modular, consent-based parental supervision pla
 ┌─────────────────────────────────────────────────────────────┐
 │                       guardian CLI                          │
 │               (main.py, commands.py)                        │
-└──┬─────────┬─────────┬─────────┬─────────┬───────────────┬───┘
-   │         │         │         │         │               │
-┌──▼──────┐┌─▼──────┐┌─▼──────┐┌─▼──────┐┌─▼──────────┐┌──▼──────┐
-│ console ││  view-  ││trans-  ││ policy ││ telemetry  ││ pairing │
-│ Engine  ││  only   ││ port   ││ Engine ││  Engine    ││ Engine  │
-│         ││ screen  ││(Nexus) ││        ││            ││         │
-│         ││ (Vista) ││        ││        ││            ││         │
-└──┬──────┘└──┬──────┘└──┬─────┘└──┬─────┘└──┬─────────┘└──┬──────┘
-   │         │         │         │         │              │
-└──┴─────────┴─────────┴────┬────┴────┬────┴──────┬───────┴────────┘
-                            │         │          │
-┌───────────────────────────▼─────────▼──────────▼───────────────┐
-│                       storage Engine                          │
-│             (database, migrations, audit.py)                  │
+└──┬─────────┬─────────┬─────────┬─────────┬───────────┬─────┴───┐
+   │         │         │         │         │           │         │
+┌──▼──────┐┌─▼──────┐┌─▼──────┐┌─▼──────┐┌─▼───────┐┌─▼─────┐┌──▼──────┐
+│ console ││  view-  ││trans-  ││ policy ││ tele-  ││ Aegis ││ pairing │
+│ Engine  ││  only   ││ port   ││ Engine ││ metry  ││(Phase ││ Engine  │
+│         ││ screen  ││(Nexus) ││        ││ Engine ││  8)   ││         │
+│         ││ (Vista) ││        ││        ││        ││Andoird││         │
+│         ││(Phase7) ││        ││        ││        ││compa- ││         │
+│         ││        ││        ││        ││        ││nion   ││         │
+└──┬──────┘└──┬──────┘└──┬─────┘└──┬─────┘└──┬─────┘└──┬─────┘└──┬──────┘
+   │         │         │         │         │         │         │
+└──┴─────────┴─────────┴────┬────┴────┬────┴────┬────┴────────┴────────┘
+                            │         │         │
+┌───────────────────────────▼─────────▼─────────▼───────────────┐
+│                       storage Engine                         │
+│       (database, migrations, audit.py, aegis_sessions)       │
 └──────────────────────────────┬───────────────────────────────┘
                                │
 ┌──────────────────────────────▼───────────────────────────────┐
@@ -125,3 +127,7 @@ GuardianMesh maintains an idempotent SQLite database across schema migrations:
 - **Migration 4 (`004_sentinel_schema`)**: `policies`, `policy_rules`, `alerts`.
 - **Phase 5 (Console)**: Presentation and facade layer.
 - **Migration 6 (`006_nexus_transport`)**: `transport_sessions`, `transport_peers`, `transport_messages`, `transport_sequences`.
+- **Phase 7 (Vista)**: Consent-based view-only screen sessions.
+  - **Migration 7 (`007_vista_screen_sessions`)**: `screen_sessions`, `screen_authorizations` (metadata only).
+- **Phase 8 (Aegis)**: Production Android companion with `MediaProjection` consent.
+  - **Migration 8 (`008_aegis_screen_capture`)**: `aegis_sessions` (metadata only).

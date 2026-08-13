@@ -810,6 +810,140 @@ def cmd_doctor(args: argparse.Namespace, config: GuardianConfig) -> int:
     if not indicator_ok:
         critical_failure = True
 
+    # 24. Aegis Module Check (Phase 8)
+    aegis_mod_ok = True
+    aegis_mod_msg: str | None = None
+    try:
+        import guardianmesh.aegis as _aegis_module
+
+        for required in (
+            "AegisController",
+            "SystemConsentGate",
+            "MediaProjectionProvider",
+            "ScreenEncoder",
+            "ForegroundServiceIndicator",
+            "AegisFramePipeline",
+            "AegisSessionRegistry",
+            "AdapterOnlyMediaProjectionProvider",
+            "TestScreenEncoder",
+        ):
+            if not hasattr(_aegis_module, required):
+                aegis_mod_ok = False
+                aegis_mod_msg = f"Aegis module missing '{required}'."
+                break
+    except Exception as e:
+        aegis_mod_ok = False
+        aegis_mod_msg = f"Failed to import Aegis module: {e}"
+
+    checks.append(("Aegis module", aegis_mod_ok, aegis_mod_msg))
+    if not aegis_mod_ok:
+        critical_failure = True
+
+    # 25. System Consent Gate Check (Aegis)
+    consent_ok = True
+    consent_msg: str | None = None
+    try:
+        from guardianmesh.aegis.consent import (
+            SystemConsentGate,
+            default_linux_capability,
+        )
+
+        gate = SystemConsentGate(capability=default_linux_capability())
+        # On Linux, capture must always be refused.
+        decision = gate.evaluate("SCN-1")
+        if decision.allowed:
+            consent_ok = False
+            consent_msg = "Linux consent gate must not allow capture."
+        # Assert capture allowed raises on Linux.
+        try:
+            gate.assert_capture_allowed("SCN-1")
+            consent_ok = False
+            consent_msg = "Linux assert_capture_allowed must raise."
+        except Exception:
+            consent_ok = True
+    except Exception as e:
+        consent_ok = False
+        consent_msg = f"Consent gate check error: {e}"
+
+    checks.append(("System consent gate", consent_ok, consent_msg))
+    if not consent_ok:
+        critical_failure = True
+
+    # 26. Aegis Privacy Redaction Check
+    aegis_privacy_ok = True
+    aegis_privacy_msg: str | None = None
+    try:
+        import datetime
+
+        from guardianmesh.aegis.models import (
+            AegisPlatform,
+            AegisSessionInfo,
+            EncoderBackend,
+            SystemConsentState,
+        )
+
+        # Verify the AegisSessionInfo model does not include any
+        # payload-bearing fields.
+        now = datetime.datetime.now(datetime.UTC)
+        info = AegisSessionInfo(
+            aegis_session_id="AEG-DOCTOR",
+            screen_session_id="SCN-DOCTOR",
+            device_id="GM-C-00000020",
+            parent_id="GM-P-00000020",
+            consent_state=SystemConsentState.NOT_REQUESTED,
+            platform=AegisPlatform.ANDROID,
+            backend=EncoderBackend.MEDIA_CODEC,
+            state="INITIALIZED",
+            created_at=now.isoformat(),
+            expires_at=(now + datetime.timedelta(seconds=300)).isoformat(),
+        )
+        data = info.to_dict()
+        forbidden_keys: set[str] = {
+            "payload",
+            "payload_hex",
+            "screenshot",
+            "frame_data",
+            "image",
+            "raw_pixels",
+        }
+        leaked = forbidden_keys & set(data.keys())
+        if leaked:
+            aegis_privacy_ok = False
+            aegis_privacy_msg = f"AegisSessionInfo leaked payload field: {leaked}"
+    except Exception as e:
+        aegis_privacy_ok = False
+        aegis_privacy_msg = f"Aegis privacy check error: {e}"
+
+    checks.append(("Aegis privacy redaction", aegis_privacy_ok, aegis_privacy_msg))
+    if not aegis_privacy_ok:
+        critical_failure = True
+
+    # 27. Aegis Android Provider Boundary Check
+    aegis_provider_ok = True
+    aegis_provider_msg: str | None = None
+    try:
+        from guardianmesh.aegis.media_projection import (
+            AdapterOnlyMediaProjectionProvider,
+        )
+
+        aegis_provider = AdapterOnlyMediaProjectionProvider()
+        if aegis_provider.is_real_capture:
+            aegis_provider_ok = False
+            aegis_provider_msg = (
+                "AdapterOnlyMediaProjectionProvider must NOT report is_real_capture=True."
+            )
+        else:
+            aegis_provider_msg = (
+                "Android capture provider: integration adapter only"
+            )
+    except Exception as e:
+        aegis_provider_ok = False
+        aegis_provider_msg = f"Aegis provider check error: {e}"
+
+    checks.append(("Android provider boundary", aegis_provider_ok, aegis_provider_msg))
+    if not aegis_provider_ok:
+        critical_failure = True
+
     # Output formatted results
     for name, ok, reason in checks:
         indicator = "✓" if ok else "✗"
@@ -2543,6 +2677,40 @@ def cmd_screen(args: argparse.Namespace, config: GuardianConfig) -> int:
                 print(f"{k:<26} {v}")
         return 0
 
+    if subcmd == "providers":
+        from guardianmesh.aegis.controller import AegisController
+
+        aegis = AegisController(db=db, config=config)
+        providers = aegis.list_providers()
+        if format_json:
+            print(json.dumps({"providers": providers}, indent=2))
+        else:
+            print("GuardianMesh Aegis — Capture Providers")
+            print_divider()
+            for p in providers:
+                print(
+                    f"{p['class']:<40} real_capture={p['is_real_capture']} "
+                    f"platform={p['capability']['platform']}"
+                )
+        return 0
+
+    if subcmd == "limits":
+        from guardianmesh.aegis.controller import AegisController
+
+        aegis = AegisController(db=db, config=config)
+        limits = aegis.list_limits()
+        if format_json:
+            print(json.dumps({"limits": limits}, indent=2))
+        else:
+            print("GuardianMesh Aegis — Hard Limits")
+            print_divider()
+            for k, v in limits.items():
+                print(f"{k:<32} {v}")
+        return 0
+
     # Default fallback: print status
-    print("Usage: guardian screen [status|request|approve|deny|start|stop|view|list|diagnostics]")
+    print(
+        "Usage: guardian screen [status|request|approve|deny|start|stop|"
+        "view|list|diagnostics|providers|limits]"
+    )
     return 0

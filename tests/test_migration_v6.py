@@ -69,12 +69,13 @@ def test_migration_v1_through_v6(tmp_path: Path) -> None:
     # 5. Apply Migration 6 (Nexus)
     mgr_v6 = MigrationManager(migrations=MIGRATIONS)
     newly_v6 = mgr_v6.apply_migrations(db)
-    # Migration 7 (Vista) is also pending in MIGRATIONS, so two new
-    # migrations are applied in this step.
-    assert len(newly_v6) == 2
+    # Migration 7 (Vista) and Migration 8 (Aegis) are also pending in
+    # MIGRATIONS, so three new migrations are applied in this step.
+    assert len(newly_v6) == 3
     assert "006_nexus_transport" in newly_v6
     assert "007_vista_screen_sessions" in newly_v6
-    assert mgr_v6.get_current_version(db) == 7
+    assert "008_aegis_screen_capture" in newly_v6
+    assert mgr_v6.get_current_version(db) == 8
 
     # Verify existing records from previous phases are preserved
     assert db.fetchone("SELECT * FROM identities WHERE id = 'GM-P-83A1F72C';") is not None
@@ -94,6 +95,9 @@ def test_migration_v1_through_v6(tmp_path: Path) -> None:
     # Verify Phase 7 (Vista) screen_sessions table exists.
     assert "screen_sessions" in tables
 
+    # Verify Phase 8 (Aegis) aegis_sessions table exists.
+    assert "aegis_sessions" in tables
+
     # Verify Phase 6 indexes exist
     indexes = [r[0] for r in db.fetchall("SELECT name FROM sqlite_master WHERE type='index';")]
     assert "idx_transport_sessions_remote" in indexes
@@ -106,6 +110,10 @@ def test_migration_v1_through_v6(tmp_path: Path) -> None:
     assert "idx_screen_sessions_device" in indexes
     assert "idx_screen_sessions_state" in indexes
 
-    # Idempotency: applying again applies 0 new migrations and version remains 7
+    # Verify Phase 8 indexes exist
+    assert "idx_aegis_sessions_screen" in indexes
+    assert "idx_aegis_sessions_state" in indexes
+
+    # Idempotency: applying again applies 0 new migrations and version remains 8
     assert len(mgr_v6.apply_migrations(db)) == 0
-    assert mgr_v6.get_current_version(db) == 7
+    assert mgr_v6.get_current_version(db) == 8

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GuardianMesh Aegis</string>
+    <string name="aegis_notification_channel_name">Aegis capture</string>
+    <string name="aegis_notification_channel_description">
+        Persistent notification while screen sharing is active.
+    </string>
+    <string name="aegis_notification_title">
+        GuardianMesh screen sharing is active
+    </string>
+    <string name="aegis_notification_body">
+        Tap STOP to end sharing immediately.
+    </string>
+    <string name="aegis_notification_action_stop">STOP SHARING</string>
+</resources>

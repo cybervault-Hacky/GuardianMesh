@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guardianmesh"
-version = "0.7.0"
-description = "Consent-based parental device supervision system — Phase 7: Vista"
+version = "0.8.0"
+description = "Consent-based parental device supervision system — Phase 8: Aegis"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -51,6 +51,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --cov=guardianmesh --cov-report=term-missing"
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning",
+]
 
 [tool.ruff]
 line-length = 110

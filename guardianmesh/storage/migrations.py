@@ -368,6 +368,48 @@ MIGRATIONS: Sequence[Migration] = [
             ON screen_authorizations(decision);
         """,
     ),
+    Migration(
+        version=8,
+        name="008_aegis_screen_capture",
+        up_sql="""
+        CREATE TABLE IF NOT EXISTS aegis_sessions (
+            aegis_session_id TEXT PRIMARY KEY,
+            screen_session_id TEXT NOT NULL,
+            device_id TEXT NOT NULL,
+            parent_id TEXT NOT NULL,
+            authorization_id TEXT,
+            consent_state TEXT NOT NULL DEFAULT 'NOT_REQUESTED' CHECK(
+                consent_state IN (
+                    'NOT_REQUESTED', 'REQUESTED', 'GRANTED',
+                    'DENIED', 'REVOKED', 'EXPIRED'
+                )
+            ),
+            platform TEXT NOT NULL DEFAULT 'UNKNOWN',
+            backend TEXT NOT NULL DEFAULT 'TEST',
+            state TEXT NOT NULL DEFAULT 'INITIALIZED',
+            transport_session_id TEXT,
+            created_at TEXT NOT NULL,
+            consent_requested_at TEXT,
+            consent_granted_at TEXT,
+            started_at TEXT,
+            stopped_at TEXT,
+            expires_at TEXT NOT NULL,
+            last_frame_sequence INTEGER NOT NULL DEFAULT 0,
+            stop_reason TEXT,
+            label TEXT,
+            metadata TEXT DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_aegis_sessions_screen
+            ON aegis_sessions(screen_session_id);
+        CREATE INDEX IF NOT EXISTS idx_aegis_sessions_device
+            ON aegis_sessions(device_id);
+        CREATE INDEX IF NOT EXISTS idx_aegis_sessions_state
+            ON aegis_sessions(state);
+        CREATE INDEX IF NOT EXISTS idx_aegis_sessions_created
+            ON aegis_sessions(created_at);
+        """,
+    ),
 ]
 
 

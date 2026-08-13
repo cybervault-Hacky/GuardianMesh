@@ -17,9 +17,9 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
      ↓
   Phase 6: Nexus / Secure Transport (v0.6.0)
      ↓
-  Phase 7: Vista / Consent-Based Screen Sessions (v0.7.0)  <-- [Current Phase]
+  Phase 7: Vista / Consent-Based Screen Sessions (v0.7.0)
      ↓
-  Phase 8: Dashboard / Reporting (v0.8.0)
+  Phase 8: Aegis / Production Android Companion (v0.8.0)  <-- [Current Phase]
      ↓
   Phase 9: Security Hardening (v0.9.0)
      ↓
@@ -131,8 +131,32 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 8: Dashboard & Reporting (v0.8.0)
-- **Objective**: Consolidated parental dashboard and weekly family summary views.
+## Phase 8: Aegis / Production Android Companion (v0.8.0) — *Current Phase*
+- **Objective**: Production Android companion architecture using Android's official `MediaProjection` consent flow.
+- **Mandatory Safety Rules**:
+  1. **Three-Key Consent Gate**: Trust (Phase 2) + Authorization (Phase 7) + System Consent (Phase 8) — all three are required.
+  2. **No Remote Control**: The screen message type allowlist remains at seven narrowly-scoped names. No `SCREEN_CONTROL`, `REMOTE_INPUT`, `EXECUTE`, `SHELL`, `COMMAND`.
+  3. **Visible Foreground Service Indicator**: A persistent notification is displayed for the entire capture session. The child can stop locally via a `STOP SHARING` action.
+  4. **Local Stop Control**: The child can stop the session immediately, even when the network is unavailable.
+  5. **No Frame Persistence**: Frames exist only in the in-memory `BoundedFrameQueue` for one frame processing cycle.
+  6. **Bounded Resources**: 10 FPS, 1280x720, 4 MiB encoded frame, 30 queued frames, `DROP_OLDEST` backpressure.
+  7. **Encryption Reuse**: All screen traffic flows through the existing Nexus transport. The companion's `NexusClient` reuses Phase 6 primitives.
+  8. **No New Permissions**: Only `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, and `POST_NOTIFICATIONS` are declared. No microphone, camera, location, contacts, SMS, accessibility, or storage permissions.
+- **Deliverables**:
+  - Isolated `guardianmesh/aegis/` module with `errors`, `models`, `consent`, `media_projection`, `encoder`, `indicator_service`, `pipeline`, `controller`, `registry`, `metrics`.
+  - `MediaProjectionProvider` abstract class with `AdapterOnlyMediaProjectionProvider` and `FakeMediaProjectionProvider` implementations.
+  - `ScreenEncoder` abstract class with `TestScreenEncoder` and `AndroidMediaCodecEncoder` (production stub).
+  - `SystemConsentGate` state machine with `NOT_REQUESTED`, `REQUESTED`, `GRANTED`, `DENIED`, `REVOKED`, `EXPIRED`.
+  - `ForegroundServiceIndicator` model with STOP SHARING action and deterministic notification copy.
+  - `AegisFramePipeline` orchestration: `MediaProjection` → `ImageReader` → `FrameNormalizer` → `FrameLimiter` → `ScreenEncoder` → `BoundedFrameQueue` → transport.
+  - `FrameMetrics` with bounded counters, latencies, and queue stats. Metadata only.
+  - `AegisController` high-level orchestrator: `create_session`, `request_system_consent`, `grant_system_consent`, `deny_system_consent`, `start_capture`, `stop_capture`, `expire_due`, `diagnostics`, `list_providers`, `list_limits`.
+  - 12 new audit event types for the full consent-gated capture lifecycle.
+  - Database Migration 8 (`008_aegis_screen_capture`) — `aegis_sessions` table (metadata only).
+  - CLI extensions: `guardian screen providers`, `guardian screen limits`.
+  - 4 new doctor checks (`Aegis module`, `System consent gate`, `Aegis privacy redaction`, `Android provider boundary`).
+  - Documentation: `docs/AEGIS.md`, `docs/ANDROID.md`, `docs/SCREEN_CAPTURE.md`.
+  - Android Kotlin reference companion in `android/aegis/` with JVM unit tests.
 
 ---
 

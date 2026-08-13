@@ -1,7 +1,7 @@
 # GuardianMesh
 
-[![Phase](https://img.shields.io/badge/Phase-7%20Vista-blue.svg)](docs/ROADMAP.md)
-[![Version](https://img.shields.io/badge/Version-0.7.0-green.svg)](pyproject.toml)
+[![Phase](https://img.shields.io/badge/Phase-8%20Aegis-blue.svg)](docs/ROADMAP.md)
+[![Version](https://img.shields.io/badge/Version-0.8.0-green.svg)](pyproject.toml)
 [![Platform](https://img.shields.io/badge/Platform-Termux%20%7C%20Linux-orange.svg)](#supported-platforms)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -51,6 +51,23 @@ Phase 7 introduces **consent-based view-only screen sessions**:
 - **No Remote Control**: The protocol message type allowlist contains zero remote-control names. `SCREEN_CONTROL`, `REMOTE_INPUT`, `EXECUTE`, `SHELL`, `COMMAND`, `KEYLOG`, `KEYSTROKE`, etc. are explicitly rejected.
 - **No Frame Persistence**: Frames are never written to disk. The `screen_sessions` and `screen_authorizations` tables store metadata only.
 - **Dedicated CLI Commands (`guardian screen`)**: Request, approve, deny, start, stop, view, list, and inspect diagnostics with machine-readable `--json` support.
+
+## Phase 8: Aegis (v0.8.0)
+
+Phase 8 turns the Phase 7 Vista Android integration boundary into a real, production-oriented Android companion architecture using Android's official `MediaProjection` consent flow.
+
+- **Three-Key Consent Gate**: Trust (Phase 2) + Authorization (Phase 7) + System consent (Phase 8) — all three are required.
+- **`MediaProjection` Provider**: `MediaProjectionProvider` is the production boundary. The shipped `AdapterOnlyMediaProjectionProvider` is a deterministic test fixture for Linux/Termux.
+- **Foreground Service Indicator**: An Android foreground service notification is visible for the entire capture session. The child can stop the session locally via a `STOP SHARING` action.
+- **System Consent State Machine**: A new `SYSTEM_CONSENT_REQUIRED` / `SYSTEM_CONSENT_GRANTED` state pair ensures the Android system dialog is honoured.
+- **Frame Pipeline**: `MediaProjection` → `ImageReader` → `FrameNormalizer` → `FrameLimiter` → `AndroidMediaCodecEncoder` (production) / `TestScreenEncoder` (tests) → `BoundedFrameQueue` → `ScreenTransportAdapter` → `NexusClient`.
+- **Bounded Metrics**: `frames_captured`, `frames_encoded`, `frames_dropped`, `queue_depth`, `transport_failures`, `projection_failures`, `encoder_failures`, `last_frame_sequence`. Metadata only — never frame bytes.
+- **No New Encryption**: All screen traffic flows through the existing Nexus transport (Phase 6). The companion's `NexusClient` reuses the same X25519 + HKDF + AES-256-GCM primitives.
+- **No Remote Control**: The `ScreenMessageType` allowlist remains at seven narrowly-scoped names. No `SCREEN_CONTROL`, `REMOTE_INPUT`, `EXECUTE`, `SHELL`, `COMMAND` etc.
+- **No Frame Persistence**: Frames exist only in the in-memory `BoundedFrameQueue` for the duration of one frame processing cycle.
+- **Android Companion**: A production Kotlin reference implementation lives in `android/aegis/`. It is documented architecture that requires a real Android build environment to execute.
+- **CLI Extensions**: `guardian screen providers` and `guardian screen limits` expose Aegis metadata.
+- **Doctor Extensions**: 4 new Aegis-specific checks (`Aegis module`, `System consent gate`, `Aegis privacy redaction`, `Android provider boundary`).
 
 ---
 
@@ -207,6 +224,12 @@ guardian screen stop SCN-1234567890AB
 
 # Inspect aggregate Vista diagnostics
 guardian screen diagnostics
+
+# List available Android capture providers (Aegis)
+guardian screen providers
+
+# Show the documented Aegis hard limits
+guardian screen limits
 ```
 
 ### 7. Pair with a Child Device (`guardian pair`)
@@ -238,6 +261,10 @@ GuardianMesh is structured across 10 progressive phases:
 - [Vista Screen Sessions Guide](docs/VISTA.md)
 - [Screen Protocol Specification](docs/SCREEN_PROTOCOL.md)
 - [Screen Privacy Guarantees](docs/SCREEN_PRIVACY.md)
+- [Aegis Companion Guide](docs/AEGIS.md)
+- [Android Companion Architecture](docs/ANDROID.md)
+- [Screen Capture Pipeline](docs/SCREEN_CAPTURE.md)
+- [Privacy Guarantees](docs/PRIVACY.md)
 - [Nexus Transport Guide](docs/NEXUS.md)
 - [Transport Architecture](docs/TRANSPORT.md)
 - [Protocol Specification](docs/PROTOCOL.md)

@@ -81,7 +81,8 @@ def test_migration_v8_idempotent(tmp_path: Path) -> None:
     mgr = MigrationManager(migrations=MIGRATIONS)
     newly = mgr.apply_migrations(db)
     assert "008_aegis_screen_capture" in newly
-    assert mgr.get_current_version(db) == 8
+    assert "009_orion_schema" in newly
+    assert mgr.get_current_version(db) == 9
 
     # Re-apply: no new migrations should be reported.
     newly2 = mgr.apply_migrations(db)
@@ -113,8 +114,8 @@ def test_migration_full_chain_through_v8(tmp_path: Path) -> None:
 
     mgr = MigrationManager(migrations=MIGRATIONS)
     newly = mgr.apply_migrations(db)
-    assert len(newly) == 7  # 1, 2, 3, 4, 6, 7, 8
-    assert mgr.get_current_version(db) == 8
+    assert len(newly) == 8  # 1, 2, 3, 4, 6, 7, 8, 9
+    assert mgr.get_current_version(db) == 9
 
     tables = [r[0] for r in db.fetchall("SELECT name FROM sqlite_master WHERE type='table';")]
     for required in (
@@ -134,6 +135,10 @@ def test_migration_full_chain_through_v8(tmp_path: Path) -> None:
         "transport_sequences",
         "screen_sessions",
         "aegis_sessions",
+        "orion_events",
+        "orion_actions",
+        "orion_capabilities",
+        "orion_reconciliation",
     ):
         assert required in tables, f"Missing required table: {required}"
 

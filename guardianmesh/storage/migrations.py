@@ -410,6 +410,100 @@ MIGRATIONS: Sequence[Migration] = [
             ON aegis_sessions(created_at);
         """,
     ),
+    Migration(
+        version=9,
+        name="009_orion_schema",
+        up_sql="""
+        CREATE TABLE IF NOT EXISTS orion_events (
+            event_id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            device_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            priority TEXT NOT NULL DEFAULT 'NORMAL',
+            sequence INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_orion_events_device
+            ON orion_events(device_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_events_type
+            ON orion_events(event_type);
+        CREATE INDEX IF NOT EXISTS idx_orion_events_correlation
+            ON orion_events(correlation_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_events_created
+            ON orion_events(created_at);
+
+        CREATE TABLE IF NOT EXISTS orion_actions (
+            action_id TEXT PRIMARY KEY,
+            action_type TEXT NOT NULL,
+            device_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            correlation_id TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            parameters TEXT NOT NULL DEFAULT '{}',
+            idempotency_key TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            next_attempt_at TEXT,
+            last_error TEXT,
+            updated_at TEXT,
+            result TEXT NOT NULL DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_device
+            ON orion_actions(device_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_status
+            ON orion_actions(status);
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_idempotency
+            ON orion_actions(idempotency_key);
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_correlation
+            ON orion_actions(correlation_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_actions_created
+            ON orion_actions(created_at);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_orion_actions_idempotency_unique
+            ON orion_actions(idempotency_key)
+            WHERE idempotency_key IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS orion_capabilities (
+            capability_id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL UNIQUE,
+            capabilities_json TEXT NOT NULL DEFAULT '{}',
+            schema_version TEXT NOT NULL,
+            discovered_at TEXT NOT NULL,
+            updated_at TEXT,
+            source TEXT NOT NULL DEFAULT 'explicit-discovery',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_orion_capabilities_device
+            ON orion_capabilities(device_id);
+
+        CREATE TABLE IF NOT EXISTS orion_reconciliation (
+            report_id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            events_processed INTEGER NOT NULL DEFAULT 0,
+            conflicts_detected INTEGER NOT NULL DEFAULT 0,
+            conflicts_resolved INTEGER NOT NULL DEFAULT 0,
+            stale_events INTEGER NOT NULL DEFAULT 0,
+            failed_actions INTEGER NOT NULL DEFAULT 0,
+            final_state TEXT NOT NULL DEFAULT 'SYNCED',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_orion_reconciliation_device
+            ON orion_reconciliation(device_id);
+        CREATE INDEX IF NOT EXISTS idx_orion_reconciliation_started
+            ON orion_reconciliation(started_at);
+        """,
+    ),
 ]
 
 

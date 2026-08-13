@@ -69,13 +69,15 @@ def test_migration_v1_through_v6(tmp_path: Path) -> None:
     # 5. Apply Migration 6 (Nexus)
     mgr_v6 = MigrationManager(migrations=MIGRATIONS)
     newly_v6 = mgr_v6.apply_migrations(db)
-    # Migration 7 (Vista) and Migration 8 (Aegis) are also pending in
-    # MIGRATIONS, so three new migrations are applied in this step.
-    assert len(newly_v6) == 3
+    # Migration 7 (Vista), Migration 8 (Aegis), and Migration 9 (Orion)
+    # are also pending in MIGRATIONS, so four new migrations are
+    # applied in this step.
+    assert len(newly_v6) == 4
     assert "006_nexus_transport" in newly_v6
     assert "007_vista_screen_sessions" in newly_v6
     assert "008_aegis_screen_capture" in newly_v6
-    assert mgr_v6.get_current_version(db) == 8
+    assert "009_orion_schema" in newly_v6
+    assert mgr_v6.get_current_version(db) == 9
 
     # Verify existing records from previous phases are preserved
     assert db.fetchone("SELECT * FROM identities WHERE id = 'GM-P-83A1F72C';") is not None
@@ -98,6 +100,12 @@ def test_migration_v1_through_v6(tmp_path: Path) -> None:
     # Verify Phase 8 (Aegis) aegis_sessions table exists.
     assert "aegis_sessions" in tables
 
+    # Verify Phase 9 (Orion) tables exist.
+    assert "orion_events" in tables
+    assert "orion_actions" in tables
+    assert "orion_capabilities" in tables
+    assert "orion_reconciliation" in tables
+
     # Verify Phase 6 indexes exist
     indexes = [r[0] for r in db.fetchall("SELECT name FROM sqlite_master WHERE type='index';")]
     assert "idx_transport_sessions_remote" in indexes
@@ -114,6 +122,10 @@ def test_migration_v1_through_v6(tmp_path: Path) -> None:
     assert "idx_aegis_sessions_screen" in indexes
     assert "idx_aegis_sessions_state" in indexes
 
-    # Idempotency: applying again applies 0 new migrations and version remains 8
+    # Verify Phase 9 indexes exist
+    assert "idx_orion_events_device" in indexes
+    assert "idx_orion_actions_status" in indexes
+
+    # Idempotency: applying again applies 0 new migrations and version remains 9
     assert len(mgr_v6.apply_migrations(db)) == 0
-    assert mgr_v6.get_current_version(db) == 8
+    assert mgr_v6.get_current_version(db) == 9

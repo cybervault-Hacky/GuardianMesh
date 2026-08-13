@@ -19,9 +19,9 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
      ↓
   Phase 7: Vista / Consent-Based Screen Sessions (v0.7.0)
      ↓
-  Phase 8: Aegis / Production Android Companion (v0.8.0)  <-- [Current Phase]
+  Phase 8: Aegis / Production Android Companion (v0.8.0)
      ↓
-  Phase 9: Security Hardening (v0.9.0)
+  Phase 9: Orion / Consent-Aware Orchestration (v0.9.0)  <-- [Current Phase]
      ↓
   Phase 10: Production Release (v1.0.0)
 ```
@@ -105,7 +105,7 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 7: Vista / Consent-Based Screen Sessions (v0.7.0) — *Current Phase*
+## Phase 7: Vista / Consent-Based Screen Sessions (v0.7.0) — *Complete*
 - **Objective**: Consent-based, view-only screen observation with the strictest possible privacy guarantees. **NOT** a covert monitoring system.
 - **Mandatory Safety Rules**:
   1. **Trust != Screen Authorization**. Every screen session requires a fresh, explicit child-side authorization, even between trusted devices.
@@ -131,7 +131,7 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 8: Aegis / Production Android Companion (v0.8.0) — *Current Phase*
+## Phase 8: Aegis / Production Android Companion (v0.8.0) — *Complete*
 - **Objective**: Production Android companion architecture using Android's official `MediaProjection` consent flow.
 - **Mandatory Safety Rules**:
   1. **Three-Key Consent Gate**: Trust (Phase 2) + Authorization (Phase 7) + System Consent (Phase 8) — all three are required.
@@ -160,8 +160,38 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 9: Security Hardening (v0.9.0)
-- **Objective**: Independent penetration testing, formal verification, threat model review, and strict memory safety audits.
+## Phase 9: Orion / Consent-Aware Orchestration (v0.9.0) — *Current Phase*
+- **Objective**: Deterministic, event-driven orchestration of all eight existing subsystems (Pulse, Sentinel, Console, Nexus, Vista, Aegis, Trust, Link) — without introducing any new covert monitoring, remote control, shell execution, hidden screen capture, microphone/camera activation, location tracking, clipboard collection, message collection, browser-history collection, or bypass of existing consent mechanisms.
+- **Mandatory Safety Rules**:
+  1. **Orion is orchestration, NOT surveillance.** The `OrionActionType` and `OrionEventType` allowlists are strict. `EXECUTE`, `SHELL`, `REMOTE_INPUT`, `TYPE_TEXT`, `ENABLE_MICROPHONE`, `ENABLE_CAMERA`, `READ_SMS`, `READ_FILES`, `HIDDEN_SCREENSHOT`, `KEYSTROKE`, `MESSAGE`, `MICROPHONE`, `CAMERA`, `LOCATION`, `BROWSER_HISTORY`, etc. are all forbidden at construction time.
+  2. **No payload capture.** The `FORBIDDEN_PAYLOAD_KEYS` and `FORBIDDEN_ACTION_PARAM_KEYS` sets reject every form of sensitive content (frame, screenshot, keylog, password, private_key, secret, token, command, shell, exec, code, script).
+  3. **No secrets in audit logs.** The 11 new `ORION_*` audit event types record only metadata.
+  4. **No sensitive columns.** Migration 9's four Orion tables have no column for frame bytes, command strings, or secrets.
+  5. **Consent is delegated, not invented.** `OrionConsentValidator` is a thin wrapper that delegates to `TrustManager`, `ScreenAuthorizationManager`, and `SystemConsentGate`.
+  6. **Capabilities are explicit.** `OrionCapabilityRegistry` pre-populates the control-plane profile. Negative defaults (AUDIO_CAPTURE, REMOTE_INPUT, KEYLOGGING, etc.) are always False and the registry refuses to set them to True.
+  7. **Bounded queue.** The action queue has a configurable maximum size (default 10,000) to prevent unbounded growth.
+  8. **Bounded retry.** Each action has a `max_retries` cap. The executor respects it.
+  9. **Idempotency.** Duplicate `idempotency_key` values are silently rejected.
+  10. **Action expiry.** Actions past their `expires_at` are marked EXPIRED at sweep time and never executed.
+  11. **Reconciliation is metadata-only.** The `OrionReconciliationReport` never contains frame bytes, commands, or secrets.
+- **Deliverables**:
+  - Isolated `guardianmesh/orion/` package with 15 modules: `__init__`, `errors`, `models`, `events`, `bus`, `capabilities`, `consent`, `actions`, `handlers`, `queue`, `executor`, `reconciliation`, `registry`, `scheduler`, `coordinator`.
+  - `OrionEventBus` with sync (deterministic) and async (worker thread) modes, three backpressure strategies, per-device sequence ordering, handler-failure isolation, bounded retry.
+  - `OrionActionQueue` — persistent, idempotent, with UNIQUE INDEX on `idempotency_key`. Bounded size, expiration sweep, status transitions.
+  - `OrionExecutor` — sequential, bounded by `max_consecutive_failures`. Bounded retry.
+  - `OrionActionHandlers` — 12 SAFE handlers. Each delegates to an existing subsystem. No `EXECUTE`, no `SHELL`, no `REMOTE_INPUT`, no hidden capture.
+  - `OrionConsentValidator` — delegates to existing subsystems. Never invents consent.
+  - `OrionStateReconciler` — applies the documented reconciliation rules. Idempotent. Produces metadata-only reports.
+  - `OrionCapabilityRegistry` — pre-populated control-plane profile. Negative defaults are always False.
+  - `OrionRegistry` — persistent capabilities, events, and reports.
+  - `OrionScheduler` — composes bus, queue, executor, handlers.
+  - `OrionCoordinator` — high-level entry point with `publish`, `submit`, `reconcile`, `metrics`.
+  - 11 new audit event types (`ORION_*`).
+  - Database Migration 9 (`009_orion_schema`) — `orion_events`, `orion_actions`, `orion_capabilities`, `orion_reconciliation` with 12 indexes. No columns for frame bytes, command strings, or secrets.
+  - CLI extensions: `guardian orchestrate status|events|actions|action|retry|cancel|reconcile|capabilities` and `guardian capabilities <device_id>`. All support `--json` and work at 40/60/80/120 column terminals.
+  - 11 new doctor checks covering the full Orion subsystem.
+  - 380+ new tests covering event/action/bus/queue/handler/reconciliation/capability/registry/scheduler/coordinator/security/privacy/CLI/deep-coverage.
+  - Documentation: `docs/ORION.md`, `docs/ORCHESTRATION.md`, `docs/RECONCILIATION.md`, `docs/ACTIONS.md`.
 
 ---
 

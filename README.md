@@ -1,7 +1,7 @@
 # GuardianMesh
 
-[![Phase](https://img.shields.io/badge/Phase-8%20Aegis-blue.svg)](docs/ROADMAP.md)
-[![Version](https://img.shields.io/badge/Version-0.8.0-green.svg)](pyproject.toml)
+[![Phase](https://img.shields.io/badge/Phase-9%20Orion-blue.svg)](docs/ROADMAP.md)
+[![Version](https://img.shields.io/badge/Version-0.9.0-green.svg)](pyproject.toml)
 [![Platform](https://img.shields.io/badge/Platform-Termux%20%7C%20Linux-orange.svg)](#supported-platforms)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -68,6 +68,24 @@ Phase 8 turns the Phase 7 Vista Android integration boundary into a real, produc
 - **Android Companion**: A production Kotlin reference implementation lives in `android/aegis/`. It is documented architecture that requires a real Android build environment to execute.
 - **CLI Extensions**: `guardian screen providers` and `guardian screen limits` expose Aegis metadata.
 - **Doctor Extensions**: 4 new Aegis-specific checks (`Aegis module`, `System consent gate`, `Aegis privacy redaction`, `Android provider boundary`).
+
+## Phase 9: Orion (v0.9.0)
+
+Phase 9 introduces **Consent-Aware Orchestration & State Reconciliation**. Orion is the event-driven orchestration layer that ties the existing subsystems (Pulse, Sentinel, Console, Nexus, Vista, Aegis, Trust) together — without introducing any new surveillance or remote-control capability.
+
+- **Event Bus**: A bounded, thread-safe `OrionEventBus` with deterministic and async modes, three backpressure strategies (`DROP_OLDEST`, `DROP_NEWEST`, `REJECT`), per-device sequence ordering, handler-failure isolation, and bounded retry.
+- **Action Queue**: A persistent, idempotent `OrionActionQueue` backed by SQLite (Migration 9). Idempotency via UNIQUE INDEX on `idempotency_key`. Bounded size (default 10,000). Status transitions: `PENDING → RUNNING → SUCCEEDED/FAILED/EXPIRED/CANCELLED`.
+- **State Reconciler**: A deterministic `OrionStateReconciler` that runs after reconnect, applying the documented rules (trust revocation wins, expired authorization wins, expired sessions stopped, stale events discarded, etc.). The report is metadata-only.
+- **Capability Registry**: A pre-populated control-plane profile plus explicit per-device records. Negative defaults (`AUDIO_CAPTURE`, `REMOTE_INPUT`, `KEYLOGGING`, etc.) are **always False** and the registry refuses to set them to True.
+- **Consent Validator**: A thin wrapper that delegates to `TrustManager`, `ScreenAuthorizationManager`, and `SystemConsentGate`. Orion never invents consent.
+- **12 Safe Handlers**: `REFRESH_HEALTH`, `ACKNOWLEDGE_ALERT`, `RESOLVE_ALERT`, `RECONNECT_TRANSPORT`, `REQUEST_SCREEN_SESSION`, `STOP_SCREEN_SESSION`, `REQUEST_AEGIS_CONSENT`, `STOP_AEGIS_CAPTURE`, `RECONCILE_STATE`, `REQUEST_CAPABILITIES`, etc. No `EXECUTE`, no `SHELL`, no `REMOTE_INPUT`, no hidden capture.
+- **Forbidden Payload Keys**: Frame, screenshot, keylog, message, clipboard, microphone, audio, camera, video, location, gps, browser_history, contacts, photos, files, command, shell, exec, execute, remote_input, remote_tap, remote_click, password, private_key, secret, token, otp — all rejected at construction time.
+- **Migration 9**: `009_orion_schema` creates `orion_events`, `orion_actions`, `orion_capabilities`, `orion_reconciliation` with 12 indexes. No columns for frame bytes, command strings, or secrets.
+- **11 New Audit Events**: `ORION_EVENT_ACCEPTED`, `ORION_EVENT_REJECTED`, `ORION_ACTION_CREATED`, `ORION_ACTION_STARTED`, `ORION_ACTION_COMPLETED`, `ORION_ACTION_FAILED`, `ORION_ACTION_EXPIRED`, `ORION_RECONCILIATION_STARTED`, `ORION_RECONCILIATION_COMPLETED`, `ORION_CONFLICT_RESOLVED`, `ORION_CAPABILITY_CHANGED`. Metadata only.
+- **CLI Extensions**: `guardian orchestrate status|events|actions|action|retry|cancel|reconcile|capabilities` and `guardian capabilities <device_id>`. All support `--json` and work at 40/60/80/120 column terminals.
+- **Doctor Extensions**: 11 new Orion-specific checks (`Orion module`, `Orion event bus`, `Orion action queue`, `Orion idempotency`, `Orion reconciliation`, `Orion capability registry`, `Orion database schema`, `Orion audit integration`, `Orion consent integration`, `Orion offline queue`, `Orion handler registry`).
+
+See [docs/ORION.md](docs/ORION.md), [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md), [docs/RECONCILIATION.md](docs/RECONCILIATION.md), and [docs/ACTIONS.md](docs/ACTIONS.md).
 
 ---
 
@@ -250,8 +268,8 @@ GuardianMesh is structured across 10 progressive phases:
 5. **Phase 5: Console (v0.5.0)** — Unified parent console, device management suite, adaptive terminal typography, JSON export. *(Complete)*
 6. **Phase 6: Nexus (v0.6.0)** — End-to-end encrypted transport, mutual Ed25519 authentication, X25519 Diffie-Hellman key exchange, AES-256-GCM framing, heartbeat monitoring. *(Current)*
 7. **Phase 7: View-Only Screen Sharing (v0.7.0)** — View-only screen sharing with explicit child authorization, persistent active indicator, and no remote control.
-8. **Phase 8: Dashboard & Reporting (v0.8.0)** — Consolidated parental reporting.
-9. **Phase 9: Security Hardening (v0.9.0)** — Formal cryptographic audit and penetration hardening.
+8. **Phase 8: Aegis (v0.8.0)** — Android companion with `MediaProjection` consent flow, foreground service indicator, and frame pipeline.
+9. **Phase 9: Orion (v0.9.0)** — Consent-aware orchestration & state reconciliation. Event bus, persistent action queue, capability registry, deterministic reconciler, safe handler set.
 10. **Phase 10: Production Release (v1.0.0)** — Production-grade multi-platform release.
 
 ---
@@ -262,6 +280,10 @@ GuardianMesh is structured across 10 progressive phases:
 - [Screen Protocol Specification](docs/SCREEN_PROTOCOL.md)
 - [Screen Privacy Guarantees](docs/SCREEN_PRIVACY.md)
 - [Aegis Companion Guide](docs/AEGIS.md)
+- [Orion Orchestration Guide](docs/ORION.md)
+- [Orchestration Internals](docs/ORCHESTRATION.md)
+- [Reconciliation Guide](docs/RECONCILIATION.md)
+- [Actions Guide](docs/ACTIONS.md)
 - [Android Companion Architecture](docs/ANDROID.md)
 - [Screen Capture Pipeline](docs/SCREEN_CAPTURE.md)
 - [Privacy Guarantees](docs/PRIVACY.md)

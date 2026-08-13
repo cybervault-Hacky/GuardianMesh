@@ -114,6 +114,34 @@ guardianmesh/
     ├── router.py         # MessageRouter: dispatch to Telemetry, Policy, and Alert subsystems
     ├── server.py         # TransportServer, MemoryTransportServer, LocalSocketServer
     └── session.py        # TransportSession: active session keys, monotonic sequences, replay window
+├── aegis/
+│   ├── __init__.py       # Aegis public API
+│   ├── errors.py         # Aegis exception hierarchy
+│   ├── models.py         # AegisSessionInfo, AegisSessionState, SystemConsentState
+│   ├── consent.py        # SystemConsentGate, capability detection
+│   ├── media_projection.py  # MediaProjectionProvider (integration boundary)
+│   ├── encoder.py        # ScreenEncoder, AndroidMediaCodecEncoder
+│   ├── indicator_service.py  # ForegroundServiceIndicator
+│   ├── pipeline.py       # AegisFramePipeline
+│   ├── controller.py     # AegisController
+│   ├── registry.py       # AegisSessionRegistry
+│   └── metrics.py        # FrameMetrics
+├── orion/
+│   ├── __init__.py       # Orion public API re-exports
+│   ├── errors.py         # OrionError hierarchy
+│   ├── models.py         # OrionCapability, OrionDeviceCapabilities, OrionReconciliationReport
+│   ├── events.py         # OrionEvent, OrionEventType, forbidden event/payload keys
+│   ├── actions.py        # OrionAction, OrionActionType, ACTION_CONSENT_REQUIREMENTS, forbidden names
+│   ├── bus.py            # OrionEventBus, BackpressureStrategy
+│   ├── capabilities.py   # OrionCapabilityRegistry (in-memory, control-plane pre-populated)
+│   ├── consent.py        # OrionConsentValidator (delegates to existing subsystems)
+│   ├── handlers.py       # OrionActionHandlers (12 safe handlers)
+│   ├── queue.py          # OrionActionQueue (persistent, idempotent)
+│   ├── executor.py       # OrionExecutor (drain + bounded retry)
+│   ├── reconciliation.py # OrionStateReconciler (deterministic rules)
+│   ├── registry.py       # OrionRegistry (persistence)
+│   ├── scheduler.py      # OrionScheduler (composition)
+│   └── coordinator.py    # OrionCoordinator (high-level entry point)
 ```
 
 ---
@@ -131,3 +159,5 @@ GuardianMesh maintains an idempotent SQLite database across schema migrations:
   - **Migration 7 (`007_vista_screen_sessions`)**: `screen_sessions`, `screen_authorizations` (metadata only).
 - **Phase 8 (Aegis)**: Production Android companion with `MediaProjection` consent.
   - **Migration 8 (`008_aegis_screen_capture`)**: `aegis_sessions` (metadata only).
+- **Phase 9 (Orion)**: Consent-aware orchestration & state reconciliation.
+  - **Migration 9 (`009_orion_schema`)**: `orion_events`, `orion_actions` (with UNIQUE INDEX on `idempotency_key`), `orion_capabilities`, `orion_reconciliation` — all metadata only. No columns for frame bytes, command strings, or secrets.

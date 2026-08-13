@@ -184,3 +184,159 @@ model is the strictest in the project.
     ``Android screen provider: integration adapter only`` as a Notice
     (not a failure). It never falsely reports real Android capture
     as operational from Linux/Termux.
+
+---
+
+## 6. Orion Orchestration Security (Phase 9)
+
+> **Orion is orchestration, NOT surveillance.**
+
+Orion's security and privacy model is the strictest in the project
+for metadata. It exists to *coordinate* the existing subsystems —
+Pulse, Sentinel, Console, Nexus, Vista, Aegis, Trust — without
+introducing any new surveillance or remote-control capability.
+
+### Non-Negotiable Boundaries
+
+Orion **never** implements, in any form, on any platform:
+
+1. Covert monitoring of any kind.
+2. Remote control, remote input, or remote command execution.
+3. Shell execution or arbitrary command execution.
+4. Microphone or camera activation or capture.
+5. Hidden or unauthorized screen capture.
+6. Location tracking.
+7. Clipboard collection.
+8. Message collection (SMS, chat, email).
+9. Browser-history collection.
+10. Bypass of Vista, Aegis, or TrustManager consent.
+11. Persistence of sensitive payloads in any Orion table.
+12. Persistence of secrets in any Orion audit log.
+
+### Allowlist Enforcement
+
+The `OrionEventType`, `OrionActionType`, and `OrionCapability` enums
+are strict allowlists. Forbidden names are rejected at construction
+time. The set of forbidden names is verified by automated tests
+(`tests/test_orion_security.py`).
+
+### Payload & Parameter Redaction
+
+The `FORBIDDEN_PAYLOAD_KEYS` set rejects every form of sensitive
+content in event payloads (frame, screenshot, keylog, message,
+clipboard, microphone, audio, camera, video, location, gps,
+browser_history, contacts, photos, files, command, shell, exec,
+execute, remote_input, password, private_key, secret, token, otp).
+
+The `FORBIDDEN_ACTION_PARAM_KEYS` set rejects the same categories
+in action parameters (with the addition of code, script, keylog,
+keystrokes).
+
+### Database Column Safety
+
+Migration 9's four tables — `orion_events`, `orion_actions`,
+`orion_capabilities`, `orion_reconciliation` — have no column for
+frame bytes, command strings, private keys, session keys,
+passwords, OTPs, or any other sensitive content. The schema is
+verified by automated tests
+(`tests/test_orion_security.py::test_orion_tables_never_store_*`).
+
+### Consent Is Delegated, Not Invented
+
+`OrionConsentValidator` is a thin wrapper that delegates to:
+
+* `TrustManager` for `TRUST_REQUIRED`.
+* `ScreenAuthorizationManager` for `VISTA_AUTHORIZATION_REQUIRED`.
+* `SystemConsentGate` for `AEGIS_SYSTEM_CONSENT_REQUIRED`.
+* The active session registry for `EXISTING_ACTIVE_SESSION`.
+
+Orion never invents new consent. It propagates the existing
+subsystems' verdicts and surfaces them as
+`OrionConsentViolationError` when an action would otherwise bypass
+consent.
+
+### Capability Is Explicit, Never Inferred
+
+`OrionCapabilityRegistry` is pre-populated with a control-plane
+profile. Negative defaults (`AUDIO_CAPTURE`, `CAMERA_CAPTURE`,
+`REMOTE_INPUT`, `REMOTE_SHELL`, `KEYLOGGING`, `LOCATION_TRACKING`,
+`CLIPBOARD_ACCESS`, `MESSAGE_COLLECTION`, `BROWSER_HISTORY`,
+`HIDDEN_SCREEN_CAPTURE`) are **always False** and the registry
+refuses to set them to True.
+
+Orion never infers a capability from the platform. Every
+capability is enabled only if the caller passes `True` explicitly.
+
+### Audit Log Redaction
+
+The 11 new `ORION_*` audit event types record only metadata:
+
+* `ORION_EVENT_ACCEPTED`, `ORION_EVENT_REJECTED`.
+* `ORION_ACTION_CREATED`, `ORION_ACTION_STARTED`,
+  `ORION_ACTION_COMPLETED`, `ORION_ACTION_FAILED`,
+  `ORION_ACTION_EXPIRED`.
+* `ORION_RECONCILIATION_STARTED`, `ORION_RECONCILIATION_COMPLETED`,
+  `ORION_CONFLICT_RESOLVED`, `ORION_CAPABILITY_CHANGED`.
+
+Audit records never contain command strings, frame bytes, keylogs,
+passwords, private keys, secrets, or tokens. This is verified by
+automated tests
+(`tests/test_orion_privacy.py::test_audit_does_not_record_secrets_*`).
+
+### Bounded Queue & Retry
+
+The action queue has a configurable maximum size (default 10,000).
+`enqueue()` raises `OrionQueueError` at capacity. Each action has a
+`max_retries` cap; the executor respects it. The executor also has
+a `max_consecutive_failures` cap.
+
+### Action Expiry
+
+Actions past their `expires_at` are marked `EXPIRED` at sweep time
+and never executed. The sweep is invoked at the start of every
+executor drain cycle.
+
+### Idempotency
+
+Duplicate `idempotency_key` values are silently rejected. The queue
+enforces a UNIQUE INDEX on `idempotency_key` in the `orion_actions`
+table. This is the at-most-once guarantee.
+
+### Reconciliation Is Metadata-Only
+
+`OrionReconciliationReport` never contains frame bytes, command
+strings, or secrets. It records only counters and timestamps:
+
+* `events_processed`, `conflicts_detected`, `conflicts_resolved`,
+  `stale_events`, `failed_actions`.
+* `final_state` (one of `SYNCED`, `RESYNC_REQUIRED`, `FAILED`).
+
+### Handler Safety
+
+Each of the 12 action handlers delegates to an existing subsystem.
+Handlers never execute arbitrary code; they only call documented
+methods on subsystems that have their own consent model
+(`TelemetryProcessor`, `AlertManager`, `TransportClient`,
+`ScreenController`, `AegisController`, `OrionStateReconciler`,
+`OrionCapabilityRegistry`).
+
+### Doctor Coverage
+
+`guardian doctor` includes 11 new Orion-specific checks:
+
+* Orion module — all 15 documented public symbols are present.
+* Orion event bus — initial state and configuration.
+* Orion action queue — round-trip and persistence.
+* Orion idempotency — duplicate `idempotency_key` is rejected.
+* Orion reconciliation — `report_id` format and `completed_at` is set.
+* Orion capability registry — control-plane profile and negative
+  defaults are all False.
+* Orion database schema — all four tables are present.
+* Orion audit integration — all 11 ORION_* audit event types exist.
+* Orion consent integration — safe actions validate without
+  configured subsystems.
+* Orion offline queue — actions persist across queue reopens.
+* Orion handler registry — handler dispatch map is populated.
+
+All 11 checks pass on a healthy install.
+

@@ -94,6 +94,21 @@ The following invariants hold across every GuardianMesh phase:
   indicator, ``MediaProjection`` system consent, no new encryption
   protocol, no new Android permissions, bounded metrics.
 
+### Phase 9 (Orion)
+
+* See ``docs/ORION.md`` and ``docs/SECURITY.md#6-orion-orchestration-security-phase-9``
+  for the full privacy statement.
+* Highlights: strict allowlist of event types, action types, and
+  capabilities; forbidden payload and parameter keys (frame,
+  screenshot, keylog, message, clipboard, microphone, audio,
+  camera, video, location, gps, browser_history, contacts, photos,
+  files, command, shell, exec, execute, remote_input, password,
+  private_key, secret, token, otp); four Orion database tables
+  with no column for sensitive content; 11 ORION_* audit event
+  types record only metadata; consent is delegated, never
+  invented; reconciliation reports are metadata-only; the
+  capability registry refuses to enable any negative default.
+
 ---
 
 ## 3. What GuardianMesh never does

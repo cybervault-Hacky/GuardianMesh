@@ -48,6 +48,9 @@ pytest tests/test_transport_*.py
 
 # Run Console tests
 pytest tests/test_console_cli.py tests/test_devices_cli.py tests/test_console_services.py
+
+# Run Orion tests
+pytest tests/test_orion_*.py tests/test_migration_v9.py
 ```
 
 ---
@@ -148,3 +151,49 @@ additionally:
 13. Pass the new Aegis unit tests in `tests/test_aegis_*.py` and
     the new migration test in `tests/test_migration_v8.py` without
     regression.
+
+Any PR touching the Orion orchestration subsystem (Phase 9) must
+additionally:
+
+1. Verify that the `OrionEventType`, `OrionActionType`, and
+   `OrionCapability` allowlists are strict. Adding a forbidden name
+   to any of these enums must raise at construction time.
+2. Verify that the `FORBIDDEN_PAYLOAD_KEYS` and
+   `FORBIDDEN_ACTION_PARAM_KEYS` sets reject every form of sensitive
+   content (frame, screenshot, keylog, message, clipboard,
+   microphone, audio, camera, video, location, gps,
+   browser_history, contacts, photos, files, command, shell, exec,
+   execute, remote_input, password, private_key, secret, token,
+   otp).
+3. Verify that the four Orion database tables (`orion_events`,
+   `orion_actions`, `orion_capabilities`, `orion_reconciliation`)
+   contain no column for frame bytes, command strings, private
+   keys, session keys, passwords, OTPs, or any other sensitive
+   content. Use `PRAGMA table_info(...)` to inspect.
+4. Verify that the 11 `ORION_*` audit event types record only
+   metadata. Inspect `details` for any forbidden key.
+5. Verify that the `OrionConsentValidator` delegates to
+   `TrustManager`, `ScreenAuthorizationManager`, and
+   `SystemConsentGate`. It must never invent consent.
+6. Verify that the `OrionCapabilityRegistry` refuses to enable
+   any negative default. Adding `AUDIO_CAPTURE: True` to a
+   capabilities record must raise `OrionCapabilityError`.
+7. Verify that the action queue enforces idempotency. Two
+   enqueues with the same `idempotency_key` must result in a
+   single persisted action.
+8. Verify that the action queue is bounded. Enqueuing past the
+   `max_size` must raise `OrionQueueError`.
+9. Verify that expired actions are never executed. An action with
+   `expires_at` in the past is marked `EXPIRED` at sweep time.
+10. Verify that the `OrionReconciliationReport` is metadata-only.
+    It must contain no `frame`, `screenshot`, `command`, or
+    `password` keys.
+11. Verify that the `OrionActionHandlers` register only safe
+    handler entries. No `EXECUTE`, `SHELL`, `REMOTE_INPUT`,
+    `HIDDEN_SCREENSHOT` actions are dispatched.
+12. Verify that `guardian doctor` reports the Orion subsystem
+    honestly. All 11 Orion doctor checks must pass on a healthy
+    install.
+13. Pass the new Orion unit tests in `tests/test_orion_*.py` and
+    the new migration test in `tests/test_migration_v9.py`
+    without regression.

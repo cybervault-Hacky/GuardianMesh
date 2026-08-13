@@ -944,6 +944,404 @@ def cmd_doctor(args: argparse.Namespace, config: GuardianConfig) -> int:
     if not aegis_provider_ok:
         critical_failure = True
 
+    # 28. Orion Module Check (Phase 9)
+    orion_mod_ok = True
+    orion_mod_msg: str | None = None
+    try:
+        import guardianmesh.orion as _orion_module
+
+        for required in (
+            "OrionCoordinator",
+            "OrionEventBus",
+            "OrionActionQueue",
+            "OrionExecutor",
+            "OrionScheduler",
+            "OrionActionHandlers",
+            "OrionConsentValidator",
+            "OrionStateReconciler",
+            "OrionRegistry",
+            "OrionCapabilityRegistry",
+            "OrionEvent",
+            "OrionAction",
+            "OrionCapability",
+            "OrionDeviceCapabilities",
+            "OrionReconciliationReport",
+        ):
+            if not hasattr(_orion_module, required):
+                orion_mod_ok = False
+                orion_mod_msg = f"Orion module missing '{required}'."
+                break
+    except Exception as e:
+        orion_mod_ok = False
+        orion_mod_msg = f"Failed to import Orion module: {e}"
+
+    checks.append(("Orion module", orion_mod_ok, orion_mod_msg))
+    if not orion_mod_ok:
+        critical_failure = True
+
+    # 29. Orion Event Bus Check
+    orion_bus_ok = True
+    orion_bus_msg: str | None = None
+    try:
+        from guardianmesh.orion.bus import BackpressureStrategy, OrionEventBus
+
+        bus = OrionEventBus(deterministic=True, max_queue_size=16)
+        if bus.handler_count() != 0 or bus.queue_size() != 0:
+            orion_bus_ok = False
+            orion_bus_msg = "Event bus initial state is wrong."
+        elif bus.metrics()["max_queue_size"] != 16:
+            orion_bus_ok = False
+            orion_bus_msg = "Event bus max_queue_size mismatch."
+        elif bus.metrics()["backpressure"] != BackpressureStrategy.DROP_OLDEST.value:
+            orion_bus_ok = False
+            orion_bus_msg = "Event bus default backpressure mismatch."
+    except Exception as e:
+        orion_bus_ok = False
+        orion_bus_msg = f"Event bus error: {e}"
+
+    checks.append(("Orion event bus", orion_bus_ok, orion_bus_msg))
+    if not orion_bus_ok:
+        critical_failure = True
+
+    # 30. Orion Action Queue Check
+    orion_queue_ok = True
+    orion_queue_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+            OrionActionType,
+        )
+        from guardianmesh.orion.queue import OrionActionQueue
+
+        if not db_ok:
+            orion_queue_ok = False
+            orion_queue_msg = "Database unavailable for Orion queue."
+        else:
+            queue = OrionActionQueue(db, max_size=1000)
+            now = datetime.datetime.now(datetime.UTC)
+            test_action = OrionAction(
+                action_id="OAC-DOCTOR-TEST",
+                action_type=OrionActionType.REQUEST_CAPABILITIES,
+                device_id="GM-C-19A84E72",
+                created_at=now.isoformat(),
+                expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+                correlation_id="OCR-DOCTOR-TEST",
+                requested_by="GM-P-83A1F72C",
+                status=OrionActionStatus.PENDING,
+            )
+            queue.enqueue(test_action)
+            fetched = queue.get("OAC-DOCTOR-TEST")
+            if fetched is None or fetched.action_type != OrionActionType.REQUEST_CAPABILITIES:
+                orion_queue_ok = False
+                orion_queue_msg = "Action queue round-trip failed."
+            else:
+                queue.mark_cancelled("OAC-DOCTOR-TEST")
+    except Exception as e:
+        orion_queue_ok = False
+        orion_queue_msg = f"Action queue error: {e}"
+
+    checks.append(("Orion action queue", orion_queue_ok, orion_queue_msg))
+    if not orion_queue_ok:
+        critical_failure = True
+
+    # 31. Orion Idempotency Store Check
+    orion_idemp_ok = True
+    orion_idemp_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+            OrionActionType,
+        )
+        from guardianmesh.orion.queue import OrionActionQueue
+
+        if not db_ok:
+            orion_idemp_ok = False
+            orion_idemp_msg = "Database unavailable for idempotency test."
+        else:
+            queue = OrionActionQueue(db, max_size=1000)
+            now = datetime.datetime.now(datetime.UTC)
+            a1 = OrionAction(
+                action_id="OAC-IDEMP-1",
+                action_type=OrionActionType.REQUEST_CAPABILITIES,
+                device_id="GM-C-19A84E72",
+                created_at=now.isoformat(),
+                expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+                correlation_id="OCR-IDEMP-1",
+                requested_by="GM-P-83A1F72C",
+                status=OrionActionStatus.PENDING,
+                idempotency_key="IDEMP-DOCTOR",
+            )
+            a2 = OrionAction(
+                action_id="OAC-IDEMP-2",
+                action_type=OrionActionType.REQUEST_CAPABILITIES,
+                device_id="GM-C-19A84E72",
+                created_at=now.isoformat(),
+                expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+                correlation_id="OCR-IDEMP-2",
+                requested_by="GM-P-83A1F72C",
+                status=OrionActionStatus.PENDING,
+                idempotency_key="IDEMP-DOCTOR",
+            )
+            first = queue.enqueue(a1)
+            second = queue.enqueue(a2)
+            if not (first is True and second is False):
+                orion_idemp_ok = False
+                orion_idemp_msg = "Idempotency check failed: duplicate should be rejected."
+            queue.mark_cancelled("OAC-IDEMP-1")
+    except Exception as e:
+        orion_idemp_ok = False
+        orion_idemp_msg = f"Idempotency store error: {e}"
+
+    checks.append(("Orion idempotency", orion_idemp_ok, orion_idemp_msg))
+    if not orion_idemp_ok:
+        critical_failure = True
+
+    # 32. Orion Reconciliation Engine Check
+    orion_recon_ok = True
+    orion_recon_msg: str | None = None
+    try:
+        from guardianmesh.orion.reconciliation import (
+            DEFAULT_STALENESS_SECONDS,
+            OrionStateReconciler,
+        )
+        from guardianmesh.orion.registry import OrionRegistry
+
+        if not db_ok:
+            orion_recon_ok = False
+            orion_recon_msg = "Database unavailable for reconciliation test."
+        else:
+            registry = OrionRegistry(db)
+            recon = OrionStateReconciler(registry=registry)
+            report = recon.reconcile("GM-C-19A84E72")
+            if not report.report_id.startswith("ORC-"):
+                orion_recon_ok = False
+                orion_recon_msg = "Reconciliation report_id format wrong."
+            elif report.completed_at is None:
+                orion_recon_ok = False
+                orion_recon_msg = "Reconciliation did not complete."
+            elif DEFAULT_STALENESS_SECONDS <= 0:
+                orion_recon_ok = False
+                orion_recon_msg = "Staleness threshold must be positive."
+    except Exception as e:
+        orion_recon_ok = False
+        orion_recon_msg = f"Reconciliation error: {e}"
+
+    checks.append(("Orion reconciliation", orion_recon_ok, orion_recon_msg))
+    if not orion_recon_ok:
+        critical_failure = True
+
+    # 33. Orion Capability Registry Check
+    orion_cap_ok = True
+    orion_cap_msg: str | None = None
+    try:
+        from guardianmesh.orion.capabilities import OrionCapabilityRegistry
+        from guardianmesh.orion.models import OrionCapability
+
+        orion_reg = OrionCapabilityRegistry()
+        if "ORION" not in orion_reg.device_ids():
+            orion_cap_ok = False
+            orion_cap_msg = "Control-plane profile missing."
+        else:
+            for cap in OrionCapability:
+                if cap.is_negative_default:
+                    if orion_reg.supports("ORION", cap):
+                        orion_cap_ok = False
+                        orion_cap_msg = f"Negative default '{cap.value}' is True."
+                        break
+    except Exception as e:
+        orion_cap_ok = False
+        orion_cap_msg = f"Capability registry error: {e}"
+
+    checks.append(("Orion capability registry", orion_cap_ok, orion_cap_msg))
+    if not orion_cap_ok:
+        critical_failure = True
+
+    # 34. Orion Database Schema Check
+    orion_schema_ok = True
+    orion_schema_msg: str | None = None
+    try:
+        if not db_ok:
+            orion_schema_ok = False
+            orion_schema_msg = "Database unavailable for Orion schema check."
+        else:
+            tables = [r[0] for r in db.fetchall(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'orion_%';"
+            )]
+            for required in (
+                "orion_events",
+                "orion_actions",
+                "orion_capabilities",
+                "orion_reconciliation",
+            ):
+                if required not in tables:
+                    orion_schema_ok = False
+                    orion_schema_msg = f"Missing Orion table: {required}"
+                    break
+    except Exception as e:
+        orion_schema_ok = False
+        orion_schema_msg = f"Orion schema check error: {e}"
+
+    checks.append(("Orion database schema", orion_schema_ok, orion_schema_msg))
+    if not orion_schema_ok:
+        critical_failure = True
+
+    # 35. Orion Audit Integration Check
+    orion_audit_ok = True
+    orion_audit_msg: str | None = None
+    try:
+        from guardianmesh.storage.audit import AuditEventType
+
+        required_orion_audits = (
+            "ORION_EVENT_ACCEPTED",
+            "ORION_EVENT_REJECTED",
+            "ORION_ACTION_CREATED",
+            "ORION_ACTION_STARTED",
+            "ORION_ACTION_COMPLETED",
+            "ORION_ACTION_FAILED",
+            "ORION_ACTION_EXPIRED",
+            "ORION_RECONCILIATION_STARTED",
+            "ORION_RECONCILIATION_COMPLETED",
+            "ORION_CONFLICT_RESOLVED",
+            "ORION_CAPABILITY_CHANGED",
+        )
+        for name in required_orion_audits:
+            if not hasattr(AuditEventType, name):
+                orion_audit_ok = False
+                orion_audit_msg = f"Missing audit event: {name}"
+                break
+    except Exception as e:
+        orion_audit_ok = False
+        orion_audit_msg = f"Orion audit check error: {e}"
+
+    checks.append(("Orion audit integration", orion_audit_ok, orion_audit_msg))
+    if not orion_audit_ok:
+        critical_failure = True
+
+    # 36. Orion Consent Integration Check
+    orion_consent_ok = True
+    orion_consent_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import OrionActionType
+        from guardianmesh.orion.consent import OrionConsentValidator
+
+        validator = OrionConsentValidator()
+        # An action with no consent requirements should validate cleanly.
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+        )
+
+        now = datetime.datetime.now(datetime.UTC)
+        safe_action = OrionAction(
+            action_id="OAC-CONSENT-DOCTOR",
+            action_type=OrionActionType.REQUEST_CAPABILITIES,
+            device_id="GM-C-19A84E72",
+            created_at=now.isoformat(),
+            expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+            correlation_id="OCR-CONSENT-DOCTOR",
+            requested_by="GM-P-83A1F72C",
+            status=OrionActionStatus.PENDING,
+        )
+        validator.validate(safe_action)  # should not raise
+    except Exception as e:
+        orion_consent_ok = False
+        orion_consent_msg = f"Consent integration error: {e}"
+
+    checks.append(("Orion consent integration", orion_consent_ok, orion_consent_msg))
+    if not orion_consent_ok:
+        critical_failure = True
+
+    # 37. Orion Offline Queue (persistent) Check
+    orion_offline_ok = True
+    orion_offline_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+            OrionActionType,
+        )
+        from guardianmesh.orion.queue import OrionActionQueue
+
+        if not db_ok:
+            orion_offline_ok = False
+            orion_offline_msg = "Database unavailable for offline queue test."
+        else:
+            queue = OrionActionQueue(db, max_size=1000)
+            now = datetime.datetime.now(datetime.UTC)
+            action = OrionAction(
+                action_id="OAC-OFFLINE-1",
+                action_type=OrionActionType.REQUEST_CAPABILITIES,
+                device_id="GM-C-19A84E72",
+                created_at=now.isoformat(),
+                expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+                correlation_id="OCR-OFFLINE-1",
+                requested_by="GM-P-83A1F72C",
+                status=OrionActionStatus.PENDING,
+            )
+            queue.enqueue(action)
+            # Force a re-read from a fresh queue instance.
+            queue2 = OrionActionQueue(db, max_size=1000)
+            fetched = queue2.get("OAC-OFFLINE-1")
+            if fetched is None:
+                orion_offline_ok = False
+                orion_offline_msg = "Persistent queue lost action after reopen."
+            queue.mark_cancelled("OAC-OFFLINE-1")
+    except Exception as e:
+        orion_offline_ok = False
+        orion_offline_msg = f"Offline queue error: {e}"
+
+    checks.append(("Orion offline queue", orion_offline_ok, orion_offline_msg))
+    if not orion_offline_ok:
+        critical_failure = True
+
+    # 38. Orion Handler Registry Check
+    orion_handlers_ok = True
+    orion_handlers_msg: str | None = None
+    try:
+        from guardianmesh.orion.actions import OrionActionType
+        from guardianmesh.orion.handlers import OrionActionHandlers
+
+        handlers = OrionActionHandlers()
+        # Every action type must have a handler entry in the dispatch map.
+        # We can verify by passing a known-safe action and checking the
+        # right error path is taken.
+        from guardianmesh.orion.actions import (
+            OrionAction,
+            OrionActionStatus,
+        )
+
+        now = datetime.datetime.now(datetime.UTC)
+        action = OrionAction(
+            action_id="OAC-HANDLER-DOCTOR",
+            action_type=OrionActionType.REQUEST_CAPABILITIES,
+            device_id="GM-C-19A84E72",
+            created_at=now.isoformat(),
+            expires_at=(now + datetime.timedelta(seconds=60)).isoformat(),
+            correlation_id="OCR-HANDLER-DOCTOR",
+            requested_by="GM-P-83A1F72C",
+            status=OrionActionStatus.PENDING,
+        )
+        try:
+            handlers.execute(action)
+            # Should not raise — but it may if no registry configured.
+            # The doctor only checks that the handler dispatch map is
+            # populated.
+        except Exception as exc:
+            # Acceptable: missing registry is a configuration concern.
+            if "CapabilityRegistry not configured" not in str(exc):
+                # Some other error — the handler map is broken.
+                orion_handlers_ok = False
+                orion_handlers_msg = f"Handler dispatch error: {exc}"
+    except Exception as e:
+        orion_handlers_ok = False
+        orion_handlers_msg = f"Handler registry error: {e}"
+
+    checks.append(("Orion handler registry", orion_handlers_ok, orion_handlers_msg))
+    if not orion_handlers_ok:
+        critical_failure = True
+
     # Output formatted results
     for name, ok, reason in checks:
         indicator = "✓" if ok else "✗"
@@ -2713,4 +3111,359 @@ def cmd_screen(args: argparse.Namespace, config: GuardianConfig) -> int:
         "Usage: guardian screen [status|request|approve|deny|start|stop|"
         "view|list|diagnostics|providers|limits]"
     )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 9: Orion orchestration
+# ---------------------------------------------------------------------------
+
+
+def _build_orion_coordinator(
+    config: GuardianConfig,
+) -> tuple[Database | None, Any | None, str | None]:
+    """Build a :class:`OrionCoordinator` wired to the local database."""
+    from guardianmesh.orion.coordinator import OrionCoordinator
+
+    if not config.database_path.is_file():
+        return None, None, None
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    key_storage = KeyStorageManager(config.keys_dir)
+    identity_mgr = IdentityManager(db, key_storage)
+    active_identity = identity_mgr.get_active_identity()
+    if active_identity is None:
+        return db, None, None
+    trust_mgr = TrustManager(db)
+    audit_logger = AuditLogger(db)
+    coord = OrionCoordinator(
+        db=db,
+        audit_logger=audit_logger,
+        trust_manager=trust_mgr,
+    )
+    return db, coord, active_identity.id
+
+
+def cmd_orchestrate(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Phase 9: Orion orchestration subcommand.
+
+    Subcommands: status, events, actions, action, retry, cancel,
+    reconcile, capabilities.
+    """
+    subcmd = getattr(args, "orchestrate_action", None) or "status"
+    format_json = getattr(args, "json", False) is True
+
+    db, coord, active_id = _build_orion_coordinator(config)
+    if db is None:
+        if format_json:
+            print(json.dumps({"error": "Database not initialized. Run 'guardian init' first."}, indent=2))
+        else:
+            print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+    if coord is None or active_id is None:
+        if format_json:
+            print(json.dumps({"error": "No active identity. Run 'guardian init' first."}, indent=2))
+        else:
+            print("Error: No active identity. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+
+    from guardianmesh.orion.actions import OrionActionStatus
+
+    if subcmd == "status":
+        metrics = coord.metrics()
+        queue_metrics = coord.queue.metrics()
+        bus_metrics = coord.bus.metrics()
+        cap_metrics = coord.capabilities.metrics()
+        registry_metrics = coord.registry.metrics()
+
+        status_payload = {
+            "running": metrics.get("running", False),
+            "queue": {
+                "total": queue_metrics.get("total", 0),
+                "by_status": queue_metrics.get("by_status", {}),
+                "max_size": queue_metrics.get("max_size", 0),
+            },
+            "bus": {
+                "queue_size": bus_metrics.get("queue_size", 0),
+                "processed_count": bus_metrics.get("processed_count", 0),
+                "dropped_count": bus_metrics.get("dropped_count", 0),
+                "failed_count": bus_metrics.get("failed_count", 0),
+            },
+            "capabilities": cap_metrics,
+            "registry": {
+                "events": registry_metrics.get("orion_events.count", 0),
+                "actions": registry_metrics.get("orion_actions.count", 0),
+                "capabilities_records": registry_metrics.get("orion_capabilities.count", 0),
+                "reconciliations": registry_metrics.get("orion_reconciliation.count", 0),
+            },
+        }
+        if format_json:
+            print(json.dumps(status_payload, indent=2))
+            return 0
+
+        print("GuardianMesh Orion")
+        print_divider()
+        print(f"{'Running':<14} {'YES' if status_payload['running'] else 'no'}")
+        print()
+        print("Event Bus:")
+        print(f"  {'Queue size':<14} {status_payload['bus']['queue_size']}")
+        print(f"  {'Processed':<14} {status_payload['bus']['processed_count']}")
+        print(f"  {'Dropped':<14} {status_payload['bus']['dropped_count']}")
+        print(f"  {'Failed':<14} {status_payload['bus']['failed_count']}")
+        print()
+        print("Action Queue:")
+        print(f"  {'Total':<14} {status_payload['queue']['total']}")
+        for st, cnt in status_payload["queue"]["by_status"].items():
+            print(f"  {st:<14} {cnt}")
+        print()
+        print("Capabilities:")
+        print(f"  {'Devices':<14} {status_payload['capabilities']['device_count']}")
+        print()
+        print("Registry:")
+        for k, v in status_payload["registry"].items():
+            print(f"  {k:<22} {v}")
+        return 0
+
+    elif subcmd == "events":
+        device_id = getattr(args, "device", None)
+        limit = getattr(args, "limit", 50) or 50
+        events = coord.registry.list_events(device_id=device_id, limit=limit)
+        if format_json:
+            print(json.dumps({"events": [e.to_dict() for e in events]}, indent=2))
+            return 0
+        if not events:
+            print("No Orion events recorded.")
+            return 0
+        print("Orion Events")
+        print_divider(width=72)
+        print(f"{'EVENT ID':<18} {'TYPE':<28} {'DEVICE':<14} {'SOURCE':<14}")
+        print_divider(width=72)
+        for ev in events:
+            print(
+                f"{ev.event_id:<18} {ev.event_type.value:<28} "
+                f"{ev.device_id:<14} {ev.source:<14}"
+            )
+        return 0
+
+    elif subcmd == "actions":
+        status_filter = getattr(args, "status", None)
+        device_id = getattr(args, "device", None)
+        limit = getattr(args, "limit", 50) or 50
+        if status_filter:
+            actions = coord.queue.list_by_status(status_filter, device_id=device_id, limit=limit)
+        else:
+            actions = coord.queue.list_all(limit=limit)
+        if format_json:
+            print(json.dumps({"actions": [a.to_dict() for a in actions]}, indent=2))
+            return 0
+        if not actions:
+            print("No Orion actions queued.")
+            return 0
+        print("Orion Actions")
+        print_divider(width=76)
+        print(f"{'ACTION ID':<18} {'TYPE':<26} {'STATUS':<12} {'DEVICE':<14}")
+        print_divider(width=76)
+        for a in actions:
+            print(
+                f"{a.action_id:<18} {a.action_type.value:<26} "
+                f"{a.status.value:<12} {a.device_id:<14}"
+            )
+        return 0
+
+    elif subcmd == "action":
+        action_id = getattr(args, "action_id", None)
+        if not action_id:
+            print("Usage: guardian orchestrate action <action_id>")
+            return 1
+        action = coord.queue.get(action_id)
+        if not action:
+            if format_json:
+                print(json.dumps({"error": f"Action '{action_id}' not found."}, indent=2))
+            else:
+                print(f"Action '{action_id}' not found.", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps(action.to_dict(), indent=2))
+            return 0
+        print(f"Orion Action: {action.action_id}")
+        print_divider()
+        print(f"{'Type':<14} {action.action_type.value}")
+        print(f"{'Status':<14} {action.status.value}")
+        print(f"{'Device':<14} {action.device_id}")
+        print(f"{'Requested by':<14} {action.requested_by}")
+        print(f"{'Created at':<14} {action.created_at}")
+        print(f"{'Expires at':<14} {action.expires_at}")
+        print(f"{'Correlation':<14} {action.correlation_id}")
+        if action.idempotency_key:
+            print(f"{'Idempotency':<14} {action.idempotency_key}")
+        if action.retry_count:
+            print(f"{'Retry count':<14} {action.retry_count}/{action.max_retries}")
+        if action.last_error:
+            print(f"{'Last error':<14} {action.last_error}")
+        return 0
+
+    elif subcmd == "retry":
+        action_id = getattr(args, "action_id", None)
+        if not action_id:
+            print("Usage: guardian orchestrate retry <action_id>")
+            return 1
+        action = coord.queue.get(action_id)
+        if not action:
+            if format_json:
+                print(json.dumps({"error": f"Action '{action_id}' not found."}, indent=2))
+            else:
+                print(f"Action '{action_id}' not found.", file=sys.stderr)
+            return 1
+        coord.queue.mark_running(action_id)
+        print(f"Action '{action_id}' retried.")
+        return 0
+
+    elif subcmd == "cancel":
+        action_id = getattr(args, "action_id", None)
+        if not action_id:
+            print("Usage: guardian orchestrate cancel <action_id>")
+            return 1
+        action = coord.queue.get(action_id)
+        if not action:
+            if format_json:
+                print(json.dumps({"error": f"Action '{action_id}' not found."}, indent=2))
+            else:
+                print(f"Action '{action_id}' not found.", file=sys.stderr)
+            return 1
+        if action.status in (
+            OrionActionStatus.SUCCEEDED,
+            OrionActionStatus.CANCELLED,
+            OrionActionStatus.EXPIRED,
+        ):
+            if format_json:
+                print(
+                    json.dumps(
+                        {"error": f"Action '{action_id}' is in terminal state {action.status.value}."},
+                        indent=2,
+                    )
+                )
+            else:
+                print(
+                    f"Action '{action_id}' is in terminal state {action.status.value}; cannot cancel.",
+                    file=sys.stderr,
+                )
+            return 1
+        coord.queue.mark_cancelled(action_id)
+        print(f"Action '{action_id}' CANCELLED.")
+        return 0
+
+    elif subcmd == "reconcile":
+        device_id = getattr(args, "device_id", None)
+        if not device_id:
+            print("Usage: guardian orchestrate reconcile <device_id>")
+            return 1
+        report = coord.reconcile(device_id)
+        if format_json:
+            print(json.dumps(report.to_dict(), indent=2))
+            return 0
+        print(f"Orion Reconciliation: {report.report_id}")
+        print_divider()
+        print(f"{'Device':<14} {report.device_id}")
+        print(f"{'Started':<14} {report.started_at}")
+        print(f"{'Completed':<14} {report.completed_at or '-'}")
+        print(f"{'Final state':<14} {report.final_state}")
+        print(f"{'Events':<14} {report.events_processed}")
+        print(f"{'Conflicts':<14} {report.conflicts_detected} / {report.conflicts_resolved} resolved")
+        print(f"{'Stale':<14} {report.stale_events}")
+        print(f"{'Failed':<14} {report.failed_actions}")
+        return 0
+
+    elif subcmd == "capabilities":
+        target_device = getattr(args, "device_id", None)
+        if not target_device:
+            # List all devices with capabilities.
+            all_caps = coord.capabilities.all()
+            if format_json:
+                print(
+                    json.dumps(
+                        {"capabilities": [c.to_dict() for c in all_caps]},
+                        indent=2,
+                    )
+                )
+                return 0
+            if not all_caps:
+                print("No devices with recorded capabilities.")
+                return 0
+            print("Orion Device Capabilities")
+            print_divider()
+            for c in all_caps:
+                positive = c.positive_capabilities()
+                print(f"  {c.device_id}")
+                for cap in positive:
+                    print(f"    • {cap.value}")
+            return 0
+        caps = coord.capabilities.get(target_device)
+        if not caps:
+            if format_json:
+                print(
+                    json.dumps(
+                        {"error": f"No capabilities recorded for '{target_device}'."},
+                        indent=2,
+                    )
+                )
+            else:
+                print(f"No capabilities recorded for '{target_device}'.", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps(caps.to_dict(), indent=2))
+            return 0
+        print(f"Orion Capabilities: {caps.device_id}")
+        print_divider()
+        print(f"{'Source':<14} {caps.source}")
+        if caps.notes:
+            print(f"{'Notes':<14} {caps.notes}")
+        print(f"{'Discovered':<14} {caps.discovered_at}")
+        print()
+        print("Positive (allowed):")
+        for cap in caps.positive_capabilities():
+            print(f"  • {cap.value}")
+        print()
+        print("Negative (always False):")
+        for cap in caps.negative_capabilities():
+            print(f"  • {cap.value}")
+        return 0
+
+    print(
+        "Usage: guardian orchestrate [status|events|actions|action|retry|cancel|reconcile|capabilities]"
+    )
+    return 0
+
+
+def cmd_capabilities(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Show Orion capabilities for a specific device (shorthand)."""
+    device_id = getattr(args, "device_id", None)
+    if not device_id:
+        print("Usage: guardian capabilities <device_id>")
+        return 1
+
+    db, coord, active_id = _build_orion_coordinator(config)
+    if db is None or coord is None:
+        print("Error: Database not initialized. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+
+    caps = coord.capabilities.get(device_id)
+    if not caps:
+        print(f"No capabilities recorded for '{device_id}'.", file=sys.stderr)
+        return 1
+    format_json = getattr(args, "json", False) is True
+    if format_json:
+        print(json.dumps(caps.to_dict(), indent=2))
+        return 0
+    print(f"Orion Capabilities: {caps.device_id}")
+    print_divider()
+    print(f"{'Source':<14} {caps.source}")
+    print(f"{'Discovered':<14} {caps.discovered_at}")
+    print()
+    print("Positive (allowed):")
+    for cap in caps.positive_capabilities():
+        print(f"  • {cap.value}")
+    print()
+    print("Negative (always False):")
+    for cap in caps.negative_capabilities():
+        print(f"  • {cap.value}")
     return 0

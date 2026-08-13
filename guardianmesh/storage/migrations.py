@@ -302,6 +302,72 @@ MIGRATIONS: Sequence[Migration] = [
         CREATE INDEX IF NOT EXISTS idx_transport_seq_session ON transport_sequences(session_id);
         """,
     ),
+    Migration(
+        version=7,
+        name="007_vista_screen_sessions",
+        up_sql="""
+        CREATE TABLE IF NOT EXISTS screen_sessions (
+            session_id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            parent_id TEXT NOT NULL,
+            authorization_id TEXT,
+            state TEXT NOT NULL CHECK(state IN (
+                'REQUESTED', 'PENDING_CHILD_APPROVAL', 'APPROVED',
+                'ACTIVE', 'STOPPED', 'DENIED', 'EXPIRED', 'REVOKED'
+            )),
+            transport_session_id TEXT,
+            requested_at TEXT NOT NULL,
+            approved_at TEXT,
+            started_at TEXT,
+            stopped_at TEXT,
+            expires_at TEXT NOT NULL,
+            last_frame_at TEXT,
+            frame_count INTEGER NOT NULL DEFAULT 0,
+            bytes_sent INTEGER NOT NULL DEFAULT 0,
+            bytes_received INTEGER NOT NULL DEFAULT 0,
+            width INTEGER NOT NULL DEFAULT 0,
+            height INTEGER NOT NULL DEFAULT 0,
+            codec TEXT NOT NULL DEFAULT 'TEST',
+            max_fps INTEGER NOT NULL DEFAULT 10,
+            stop_reason TEXT,
+            label TEXT,
+            metadata TEXT DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_device
+            ON screen_sessions(device_id);
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_parent
+            ON screen_sessions(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_state
+            ON screen_sessions(state);
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_requested
+            ON screen_sessions(requested_at);
+        CREATE INDEX IF NOT EXISTS idx_screen_sessions_active_device
+            ON screen_sessions(device_id, state);
+
+        CREATE TABLE IF NOT EXISTS screen_authorizations (
+            authorization_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL UNIQUE,
+            device_id TEXT NOT NULL,
+            parent_id TEXT NOT NULL,
+            decision TEXT NOT NULL CHECK(decision IN (
+                'PENDING', 'APPROVED', 'DENIED', 'EXPIRED', 'REVOKED'
+            )),
+            requested_at TEXT NOT NULL,
+            approved_at TEXT,
+            denied_at TEXT,
+            expires_at TEXT NOT NULL,
+            max_duration_seconds INTEGER NOT NULL,
+            label TEXT,
+            metadata TEXT DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_screen_auth_session
+            ON screen_authorizations(session_id);
+        CREATE INDEX IF NOT EXISTS idx_screen_auth_state
+            ON screen_authorizations(decision);
+        """,
+    ),
 ]
 
 

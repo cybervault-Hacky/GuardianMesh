@@ -37,4 +37,68 @@ The Nexus transport layer enforces multi-device communication security:
 4. **Anti-Replay Defense**: Enforces strictly increasing per-session sequence numbers with sliding-window validation and message ID deduplication caching.
 5. **Instant Revocation Reaction**: If `TrustManager` reports a device status as `REVOKED`, active transport sessions are immediately terminated, in-memory keys zeroed, and further packets rejected.
 6. **Zero Plaintext Secret Persistence**: Session keys, private keys, OTPs, and plaintext payloads are never written to database tables, logs, or exceptions.
-7. **No Remote Execution**: Arbitrary remote commands, shell access, screen streaming, or remote input injection are strictly impossible across the transport protocol.
+7. **No Remote Execution**: Arbitrary remote commands, shell access, or remote input injection are strictly impossible across the transport protocol.
+
+---
+
+## 4. Vista Screen-Session Security (Phase 7)
+
+The Vista screen subsystem is the only GuardianMesh feature that ever
+processes pixel data. Its security and privacy model is the strictest in
+the project.
+
+> **GuardianMesh Vista is NOT a covert monitoring system.**
+
+1. **Trust != Screen Authorization**. A device that is in the
+   `trusted_devices` registry is not automatically authorized to
+   receive screen frames. Every screen session requires a fresh,
+   explicit child-side authorization, recorded in the
+   `screen_authorizations` table.
+2. **No Remote Control Protocol**. The screen message type allowlist
+   contains exactly 7 names: `SCREEN_VIEW_REQUEST`,
+   `SCREEN_VIEW_APPROVAL`, `SCREEN_VIEW_DENIAL`,
+   `SCREEN_SESSION_START`, `SCREEN_FRAME`, `SCREEN_SESSION_STOP`,
+   `SCREEN_SESSION_EXPIRED`. The forbidden names (`SCREEN_CONTROL`,
+   `REMOTE_INPUT`, `EXECUTE`, `SHELL`, `COMMAND`, `KEYLOG`,
+   `KEYSTROKE`, `MIC`, `CAMERA`, `GPS`, etc.) are rejected at
+   construction time by `assert_no_remote_control_type`.
+3. **Bounded Session Lifetime**. The default authorization lifetime is
+   5 minutes (300 s) and the hard cap is 1 hour (3600 s). Inactivity
+   timeouts and trust revocation terminate the session immediately.
+4. **Visible Child-Side Indicator**. A persistent
+   `SCREEN VIEW ACTIVE` banner is rendered for the entire session
+   lifetime. The child can stop the session at any moment.
+5. **No Frame Persistence**. The `screen_sessions` and
+   `screen_authorizations` tables store metadata only. Frame payloads
+   are held only in a bounded in-memory `FrameStreamBuffer` with
+   `DROP_OLDEST` backpressure and are cleared on session termination.
+6. **No Bypass of OS Consent**. The shipped `AndroidScreenProvider` is
+   a documented integration boundary; production capture requires a
+   future Android companion component that uses `MediaProjection` with
+   the system consent dialog. The current build never claims real
+   capture is active.
+7. **No Secret Persistence**. The audit redaction list in
+   `guardianmesh.storage.audit` is exhaustive and includes every known
+   sensitive key. The authorization table does not store the
+   authorization nonce, the session key, or any other secret.
+8. **Strict Frame Validation**. Every `ScreenFrame` is rejected if
+   any of the following holds: invalid protocol version, invalid
+   `device_id` format, empty `session_id`, non-positive sequence,
+   non-positive width/height, oversized resolution (>1920x1080),
+   oversized payload (>4 MiB by default), mismatched `payload_size`
+   vs `len(payload)`, invalid `captured_at` timestamp.
+9. **Sequence Replay Defense**. The `FrameSequenceTracker` maintains a
+   sliding window of accepted sequences and rejects duplicates, gaps
+   outside the window, and non-positive sequences.
+10. **Encryption Reuse**. All screen traffic is encrypted by the
+    existing Nexus transport. The `ScreenTransportBridge` does not
+    introduce a new encryption system. The same AEAD keys, the same
+    replay defense, and the same authentication guarantees protect
+    every screen frame.
+11. **Audit Redaction**. The audit logger's redaction list includes
+    every known sensitive key (`payload`, `screenshot`,
+    `frame_data`, `raw_pixels`, `password`, `private_key`, `otp`,
+    `session_key`, `send_key`, `recv_key`, `encryption_key`,
+    `shared_secret`, `ciphertext`, `nonce_hex`, etc.). The
+    `test_audit_log_never_contains_frame_payload` test verifies that
+    a unique frame payload is never recorded in any audit event.

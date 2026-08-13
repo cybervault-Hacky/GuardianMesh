@@ -1,7 +1,7 @@
 # GuardianMesh
 
-[![Phase](https://img.shields.io/badge/Phase-6%20Nexus-blue.svg)](docs/ROADMAP.md)
-[![Version](https://img.shields.io/badge/Version-0.6.0-green.svg)](pyproject.toml)
+[![Phase](https://img.shields.io/badge/Phase-7%20Vista-blue.svg)](docs/ROADMAP.md)
+[![Version](https://img.shields.io/badge/Version-0.7.0-green.svg)](pyproject.toml)
 [![Platform](https://img.shields.io/badge/Platform-Termux%20%7C%20Linux-orange.svg)](#supported-platforms)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
@@ -38,6 +38,19 @@ Phase 6 introduces **secure transport, authenticated channels, and multi-device 
 - **Bounded Reconnection Management**: Exponential retry backoffs with jitter and retry count bounds.
 - **Dedicated CLI Commands (`guardian transport`)**: Manage peers, sessions, connections, and status with machine-readable `--json` support.
 - **Zero-Knowledge Relay Boundary**: Secure relay abstraction enforcing payload confidentiality without plaintext exposure.
+
+## Phase 7: Vista (v0.7.0)
+
+Phase 7 introduces **consent-based view-only screen sessions**:
+- **Child-Authorized Screen View**: Every session requires an explicit, fresh child approval. Trust relationships (Phase 2) are necessary but not sufficient.
+- **Visible Child-Side Indicator**: A persistent "SCREEN VIEW ACTIVE" banner is rendered for the entire session lifetime. The child can stop the session at any moment.
+- **Bounded Session Lifetime**: Default 5 minutes, hard cap 1 hour. Inactivity timeouts and trust revocation terminate the session immediately.
+- **Versioned Frame Protocol**: Strict validation, monotonic sequences, bounded replay window, and explicit oversize / sequence / codec rejection.
+- **Resource Limits**: Default 10 FPS, 1280x720 resolution, 4 MiB max frame payload, bounded buffer with `DROP_OLDEST` backpressure.
+- **Android Boundary**: `AndroidScreenProvider` is a clearly-marked integration boundary. A future Android companion component is required for real capture; the current build ships a deterministic test adapter.
+- **No Remote Control**: The protocol message type allowlist contains zero remote-control names. `SCREEN_CONTROL`, `REMOTE_INPUT`, `EXECUTE`, `SHELL`, `COMMAND`, `KEYLOG`, `KEYSTROKE`, etc. are explicitly rejected.
+- **No Frame Persistence**: Frames are never written to disk. The `screen_sessions` and `screen_authorizations` tables store metadata only.
+- **Dedicated CLI Commands (`guardian screen`)**: Request, approve, deny, start, stop, view, list, and inspect diagnostics with machine-readable `--json` support.
 
 ---
 
@@ -178,7 +191,25 @@ guardian policy list
 guardian policy show POL-7A3B1C
 ```
 
-### 6. Pair with a Child Device (`guardian pair`)
+### 6. Consent-Based Screen Sessions (`guardian screen`)
+```bash
+# Parent requests a view-only screen session
+guardian screen request GM-C-19A84E72
+
+# Child explicitly approves the view
+guardian screen approve SCN-1234567890AB
+
+# Parent begins streaming
+guardian screen start SCN-1234567890AB
+
+# Stop a session (parent or child)
+guardian screen stop SCN-1234567890AB
+
+# Inspect aggregate Vista diagnostics
+guardian screen diagnostics
+```
+
+### 7. Pair with a Child Device (`guardian pair`)
 ```bash
 guardian pair --method demo
 ```
@@ -204,6 +235,9 @@ GuardianMesh is structured across 10 progressive phases:
 
 ## Documentation
 
+- [Vista Screen Sessions Guide](docs/VISTA.md)
+- [Screen Protocol Specification](docs/SCREEN_PROTOCOL.md)
+- [Screen Privacy Guarantees](docs/SCREEN_PRIVACY.md)
 - [Nexus Transport Guide](docs/NEXUS.md)
 - [Transport Architecture](docs/TRANSPORT.md)
 - [Protocol Specification](docs/PROTOCOL.md)

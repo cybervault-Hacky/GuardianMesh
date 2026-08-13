@@ -550,6 +550,266 @@ def cmd_doctor(args: argparse.Namespace, config: GuardianConfig) -> int:
     if not router_ok:
         critical_failure = True
 
+    # 16. Vista Module Check (Phase 7)
+    vista_mod_ok = True
+    vista_mod_msg = None
+    try:
+        import guardianmesh.screen as _vista_module
+
+        for required in (
+            "ScreenController",
+            "ScreenSession",
+            "ScreenAuthorizationManager",
+            "FrameStreamBuffer",
+            "ScreenIndicator",
+            "AdapterOnlyScreenProvider",
+            "ScreenTransportBridge",
+            "ScreenSessionRegistry",
+            "ScreenAuthorizationRegistry",
+        ):
+            if not hasattr(_vista_module, required):
+                vista_mod_ok = False
+                vista_mod_msg = f"Vista module missing '{required}'."
+                break
+    except Exception as e:
+        vista_mod_ok = False
+        vista_mod_msg = f"Failed to import Vista module: {e}"
+
+    checks.append(("Vista module", vista_mod_ok, vista_mod_msg))
+    if not vista_mod_ok:
+        critical_failure = True
+
+    # 17. Screen Authorization State Machine Check (Vista)
+    auth_sm_ok = True
+    auth_sm_msg = None
+    try:
+        from guardianmesh.screen.authorization import ScreenAuthorizationManager
+
+        mgr = ScreenAuthorizationManager()
+        a = mgr.create_request(
+            session_id="SCN-TESTDOCTOR1",
+            device_id="GM-C-00000001",
+            parent_id="GM-P-00000001",
+            max_duration_seconds=60,
+        )
+        mgr.approve(a.authorization_id)
+        b = mgr.create_request(
+            session_id="SCN-TESTDOCTOR2",
+            device_id="GM-C-00000002",
+            parent_id="GM-P-00000001",
+            max_duration_seconds=60,
+        )
+        mgr.deny(b.authorization_id)
+    except Exception as e:
+        auth_sm_ok = False
+        auth_sm_msg = f"Screen authorization state machine error: {e}"
+
+    checks.append(("Screen authorization", auth_sm_ok, auth_sm_msg))
+    if not auth_sm_ok:
+        critical_failure = True
+
+    # 18. Screen Session Manager Check (Vista)
+    sess_mgr_ok = True
+    sess_mgr_msg = None
+    try:
+        from guardianmesh.screen.registry import ScreenSessionRegistry
+        from guardianmesh.screen.session import ScreenSessionConfig, ScreenSessionManager
+
+        if not db_ok:
+            sess_mgr_ok = False
+            sess_mgr_msg = "Database unavailable for screen session manager."
+        else:
+            sm = ScreenSessionManager(registry=ScreenSessionRegistry(db))
+            _ = sm.create_session(
+                device_id="GM-C-00000010",
+                parent_id="GM-P-00000010",
+                config=ScreenSessionConfig(max_duration_seconds=30),
+            )
+    except Exception as e:
+        sess_mgr_ok = False
+        sess_mgr_msg = f"Screen session manager error: {e}"
+
+    checks.append(("Screen session manager", sess_mgr_ok, sess_mgr_msg))
+    if not sess_mgr_ok:
+        critical_failure = True
+
+    # 19. Frame Validation Check (Vista)
+    frame_val_ok = True
+    frame_val_msg = None
+    try:
+        from guardianmesh.screen.frames import (
+            FrameStreamBuffer,
+            FrameValidator,
+        )
+        from guardianmesh.screen.models import ScreenFrame
+
+        v = FrameValidator()
+        f = ScreenFrame(
+            session_id="SCN-DOCTOR",
+            device_id="GM-C-00000020",
+            width=320,
+            height=240,
+            payload_size=64,
+            payload=b"x" * 64,
+        )
+        v.validate(f)
+        f.payload_size = 999
+        try:
+            v.validate(f)
+            frame_val_ok = False
+            frame_val_msg = "Frame validator did not reject size mismatch."
+        except Exception:
+            frame_val_ok = True
+        buf = FrameStreamBuffer("SCN-DOCTOR", max_queue_size=2)
+        f2 = ScreenFrame(
+            session_id="SCN-DOCTOR",
+            device_id="GM-C-00000020",
+            sequence=1,
+            width=320,
+            height=240,
+            payload_size=16,
+            payload=b"a" * 16,
+        )
+        buf.ingest(f2)
+    except Exception as e:
+        frame_val_ok = False
+        frame_val_msg = f"Frame validation error: {e}"
+
+    checks.append(("Frame validation", frame_val_ok, frame_val_msg))
+    if not frame_val_ok:
+        critical_failure = True
+
+    # 20. Vista-Nexus Integration Check
+    nexus_integ_ok = True
+    nexus_integ_msg = None
+    try:
+        from guardianmesh.screen.transport import (
+            ScreenMessageType,
+            ScreenTransportBridge,
+            is_allowed_screen_message_type,
+        )
+
+        for t in ScreenMessageType:
+            if t.is_remote_control:
+                nexus_integ_ok = False
+                nexus_integ_msg = f"Screen message type {t.value} marked as remote control."
+                break
+        if nexus_integ_ok:
+            for forbidden in (
+                "SCREEN_CONTROL",
+                "REMOTE_INPUT",
+                "EXECUTE",
+                "SHELL",
+                "COMMAND",
+            ):
+                if is_allowed_screen_message_type(forbidden):
+                    nexus_integ_ok = False
+                    nexus_integ_msg = f"Forbidden message type '{forbidden}' in allowlist."
+                    break
+        if nexus_integ_ok:
+            _ = ScreenTransportBridge()
+    except Exception as e:
+        nexus_integ_ok = False
+        nexus_integ_msg = f"Nexus integration error: {e}"
+
+    checks.append(("Nexus integration", nexus_integ_ok, nexus_integ_msg))
+    if not nexus_integ_ok:
+        critical_failure = True
+
+    # 21. Resource Limits Check (Vista)
+    res_ok = True
+    res_msg = None
+    try:
+        if (
+            config.screen_view_default_max_duration_seconds <= 0
+            or config.screen_view_max_duration_seconds
+            < config.screen_view_default_max_duration_seconds
+        ):
+            res_ok = False
+            res_msg = "Invalid screen view max duration configuration."
+        elif config.screen_view_max_fps <= 0 or config.screen_view_max_width <= 0:
+            res_ok = False
+            res_msg = "Invalid screen view resolution/fps configuration."
+    except Exception as e:
+        res_ok = False
+        res_msg = f"Resource limits check error: {e}"
+
+    checks.append(("Resource limits", res_ok, res_msg))
+    if not res_ok:
+        critical_failure = True
+
+    # 22. Child Stop Mechanism Check (Vista)
+    stop_ok = True
+    stop_msg = None
+    try:
+        from guardianmesh.screen.models import ScreenSessionState, StopReason
+        from guardianmesh.screen.registry import ScreenSessionRegistry
+        from guardianmesh.screen.session import ScreenSessionConfig, ScreenSessionManager
+
+        if db_ok:
+            sm = ScreenSessionManager(registry=ScreenSessionRegistry(db))
+            sess = sm.create_session(
+                device_id="GM-C-00000030",
+                parent_id="GM-P-00000030",
+                config=ScreenSessionConfig(max_duration_seconds=30),
+            )
+            sess.request(
+                device_id=sess.info.device_id,
+                parent_id=sess.info.parent_id,
+                max_duration_seconds=30,
+            )
+            sess.transition_to(ScreenSessionState.APPROVED)
+            sess.start()
+            sess.stop(reason=StopReason.CHILD_STOPPED)
+            if sess.info.state != ScreenSessionState.STOPPED:
+                stop_ok = False
+                stop_msg = "Child stop did not transition session to STOPPED."
+    except Exception as e:
+        stop_ok = False
+        stop_msg = f"Child stop mechanism error: {e}"
+
+    checks.append(("Child stop mechanism", stop_ok, stop_msg))
+    if not stop_ok:
+        critical_failure = True
+
+    # 23. Visible Indicator Boundary Check (Vista)
+    indicator_ok = True
+    indicator_msg: str | None = None
+    try:
+        from guardianmesh.screen.indicator import (
+            AdapterOnlyScreenProvider,
+            ScreenIndicator,
+        )
+
+        provider = AdapterOnlyScreenProvider()
+        if provider.is_real_capture:
+            indicator_ok = False
+            indicator_msg = (
+                "AdapterOnlyScreenProvider must NOT report is_real_capture=True."
+            )
+        else:
+            indicator_msg = "Android screen provider: integration adapter only"
+        ind = ScreenIndicator()
+        ind.activate(
+            session_id="SCN-INDICATOR",
+            parent_label="Test Guardian",
+            max_duration_seconds=120,
+            started_at="2026-08-13T00:00:00+00:00",
+        )
+        text = ind.render()
+        if "SCREEN VIEW ACTIVE" not in text:
+            indicator_ok = False
+            indicator_msg = "Indicator does not display SCREEN VIEW ACTIVE marker."
+    except Exception as e:
+        indicator_ok = False
+        indicator_msg = f"Indicator check error: {e}"
+
+    # The "indicator provider adapter only" notice is intentionally a Notice,
+    # not a failure: this is the documented Vista design.
+    checks.append(("Visible indicator", indicator_ok, indicator_msg))
+    if not indicator_ok:
+        critical_failure = True
+
     # Output formatted results
     for name, ok, reason in checks:
         indicator = "✓" if ok else "✗"
@@ -1966,4 +2226,323 @@ def cmd_transport(args: argparse.Namespace, config: GuardianConfig) -> int:
             print("State:           CONNECTED")
         return 0
 
+    return 0
+
+
+def _ensure_screen_db(config: GuardianConfig) -> Database:
+    """Open (and migrate) the GuardianMesh database for screen commands."""
+    db = Database(config.database_path)
+    MigrationManager().apply_migrations(db)
+    return db
+
+
+def _build_screen_controller(
+    config: GuardianConfig,
+) -> tuple[Database, str | None, Any]:
+    """Build a :class:`ScreenController` wired to the local database."""
+    from guardianmesh.screen.controller import ScreenController
+
+    db = _ensure_screen_db(config)
+    key_storage = KeyStorageManager(config.keys_dir)
+    identity_mgr = IdentityManager(db, key_storage)
+    audit_logger = AuditLogger(db)
+    trust_mgr = TrustManager(db, audit_logger)
+    active_identity = identity_mgr.get_active_identity()
+    if active_identity is None:
+        return db, None, None
+    controller = ScreenController(
+        db=db,
+        config=config,
+        trust_manager=trust_mgr,
+        audit_logger=audit_logger,
+    )
+    return db, active_identity.id, controller
+
+
+def _format_screen_status_text(data: dict[str, Any]) -> str:
+    """Render a metadata-only screen status block."""
+    lines = ["GuardianMesh Vista", "=" * 32]
+    lines.append(f"{'DEVICE':<14} {data.get('device_id', '-')}")
+    lines.append(f"{'SESSION':<14} {data.get('session_id', '-')}")
+    lines.append(f"{'STATE':<14} {data.get('state', '-')}")
+    lines.append(f"{'AUTHORIZATION':<14} {data.get('authorization', '-')}")
+    lines.append(f"{'CONNECTION':<14} {data.get('connection', '-')}")
+    lines.append(f"{'FRAME RATE':<14} {data.get('frame_rate', '-')}")
+    lines.append(f"{'RESOLUTION':<14} {data.get('resolution', '-')}")
+    lines.append(f"{'LATENCY':<14} {data.get('latency', '-')}")
+    lines.append(f"{'REMAINING':<14} {data.get('remaining', '-')}")
+    lines.append(f"{'STATUS':<14} {data.get('status', '-')}")
+    return "\n".join(lines)
+
+
+def cmd_screen(args: argparse.Namespace, config: GuardianConfig) -> int:
+    """Manage view-only, consent-based screen sessions (Phase 7: Vista)."""
+    subcmd = getattr(args, "screen_action", None) or "status"
+    format_json = getattr(args, "json", False) is True
+
+    db, active_id, controller = _build_screen_controller(config)
+    if active_id is None or controller is None:
+        if format_json:
+            print(json.dumps({"error": "No active identity. Run 'guardian init' first."}, indent=2))
+        else:
+            print("Error: No active identity. Run 'guardian init' first.", file=sys.stderr)
+        return 1
+
+    from guardianmesh.screen.controller import ScreenViewRequest
+    from guardianmesh.screen.models import StopReason
+    from guardianmesh.screen.registry import ScreenSessionRegistry
+
+    if subcmd == "status":
+        device_id = getattr(args, "device_id", None)
+        registry = ScreenSessionRegistry(db)
+        from guardianmesh.screen.session import ScreenSession as _ScreenSession
+
+        if device_id:
+            sessions = registry.list_for_device(device_id)
+        else:
+            sessions = controller.session_manager.list_all()
+        # Also include sessions from the database that are not in memory.
+        if not device_id:
+            for s in registry.list_all(limit=200):
+                if controller.session_manager.get(s.session_id) is None:
+                    sessions.append(s)
+        if format_json:
+            payload = {
+                "active_identity": active_id,
+                "sessions": [
+                    (s.info.to_dict() if isinstance(s, _ScreenSession) else s.to_dict())
+                    for s in sessions
+                ],
+            }
+            print(json.dumps(payload, indent=2))
+            return 0
+
+        print("GuardianMesh Vista")
+        print_divider()
+        if not sessions:
+            print("No screen sessions.")
+            return 0
+
+        from guardianmesh.screen.session import ScreenSession
+
+        for sess_obj in sessions:
+            if isinstance(sess_obj, ScreenSession):
+                info = sess_obj.info
+            else:
+                info = sess_obj
+            data = {
+                "device_id": info.device_id,
+                "session_id": info.session_id,
+                "state": info.state.value,
+                "authorization": "APPROVED" if info.approved_at else "PENDING",
+                "connection": "TRANSPORT_READY" if info.transport_session_id else "NO_TRANSPORT",
+                "frame_rate": f"{info.max_fps} FPS",
+                "resolution": f"{info.width}x{info.height}",
+                "latency": "n/a (adapter only)",
+                "remaining": f"{info.remaining_seconds // 60:02d}:{info.remaining_seconds % 60:02d}",
+                "status": "STOPPED" if info.is_terminal else "OK",
+            }
+            print(_format_screen_status_text(data))
+            print_divider()
+        return 0
+
+    if subcmd == "request":
+        device_id = getattr(args, "device_id", None)
+        if not device_id:
+            print("Usage: guardian screen request <device_id>")
+            return 1
+        duration = int(getattr(args, "duration", config.screen_view_default_max_duration_seconds) or 0)
+        if duration <= 0:
+            duration = config.screen_view_default_max_duration_seconds
+        duration = min(duration, config.screen_view_max_duration_seconds)
+        try:
+            req = ScreenViewRequest(
+                device_id=device_id,
+                parent_id=active_id,
+                max_duration_seconds=duration,
+                label=getattr(args, "label", None),
+                width=config.screen_view_default_width,
+                height=config.screen_view_default_height,
+                max_fps=config.screen_view_default_fps,
+            )
+            session = controller.request_view(req)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "REQUESTED", "session": session.info.to_dict()}, indent=2))
+        else:
+            print("Screen view requested.")
+            print_divider()
+            print(f"Session ID: {session.session_id}")
+            print(f"Device:     {session.info.device_id}")
+            print(f"State:      {session.info.state.value}")
+            print(f"Duration:   {session.info.expires_at}")
+            print()
+            print("Awaiting child-side authorization...")
+        return 0
+
+    if subcmd == "approve":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen approve <session_id>")
+            return 1
+        try:
+            controller.rehydrate_session(session_id)
+            session = controller.approve(session_id)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "APPROVED", "session": session.info.to_dict()}, indent=2))
+        else:
+            print(f"Session '{session_id}' APPROVED.")
+        return 0
+
+    if subcmd == "deny":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen deny <session_id>")
+            return 1
+        try:
+            controller.rehydrate_session(session_id)
+            session = controller.deny(session_id)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "DENIED", "session": session.info.to_dict()}, indent=2))
+        else:
+            print(f"Session '{session_id}' DENIED.")
+        return 0
+
+    if subcmd == "start":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen start <session_id>")
+            return 1
+        try:
+            controller.rehydrate_session(session_id)
+            session = controller.start_session(session_id)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "ACTIVE", "session": session.info.to_dict()}, indent=2))
+        else:
+            print(f"Session '{session_id}' is now ACTIVE.")
+            print("The child-side visible indicator is now displayed.")
+        return 0
+
+    if subcmd == "stop":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen stop <device_id|session_id>")
+            return 1
+        controller.rehydrate_session(session_id)
+        sess_obj = controller.session_manager.get(session_id)
+        if sess_obj is None:
+            registry = ScreenSessionRegistry(db)
+            rec = registry.get(session_id)
+            if rec is not None:
+                if format_json:
+                    print(json.dumps(rec.to_dict(), indent=2))
+                else:
+                    print(f"Session '{session_id}' is in state {rec.state.value}.")
+                return 0
+            print(f"Screen session '{session_id}' not found.", file=sys.stderr)
+            return 1
+        try:
+            session = controller.stop_session(session_id, reason=StopReason.PARENT_STOPPED)
+        except GuardianMeshError as e:
+            if format_json:
+                print(json.dumps({"error": str(e)}, indent=2))
+            else:
+                print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if format_json:
+            print(json.dumps({"status": "STOPPED", "session": session.info.to_dict()}, indent=2))
+        else:
+            print(f"Screen session '{session_id}' stopped.")
+        return 0
+
+    if subcmd == "view":
+        session_id = getattr(args, "session_id", None)
+        if not session_id:
+            print("Usage: guardian screen view <session_id>")
+            return 1
+        controller.rehydrate_session(session_id)
+        sess_obj = controller.session_manager.get(session_id)
+        if sess_obj is None:
+            print(f"Active screen session '{session_id}' not found.", file=sys.stderr)
+            return 1
+        if format_json:
+            # Never include any frame payloads — only metadata.
+            print(json.dumps(sess_obj.summary(), indent=2))
+        else:
+            print("GuardianMesh Vista — Live Session View")
+            print_divider()
+            print("NOTE: Terminal video decoding is not implemented in this build.")
+            print("A future Android companion component is required to render real")
+            print("captured frames on the parent side. This command shows the live")
+            print("session metadata so the parent can confirm an active session.")
+            print()
+            info = sess_obj.info
+            print(f"{'Session':<14} {info.session_id}")
+            print(f"{'State':<14} {info.state.value}")
+            print(f"{'Device':<14} {info.device_id}")
+            print(f"{'Codec':<14} {info.codec.value}")
+            print(f"{'Resolution':<14} {info.width}x{info.height}")
+            print(f"{'Max FPS':<14} {info.max_fps}")
+            print(f"{'Frames':<14} {info.frame_count}")
+            print(f"{'Bytes sent':<14} {info.bytes_sent}")
+            print(f"{'Remaining':<14} {info.remaining_seconds}s")
+            print()
+            print("Child-side visible indicator:")
+            for line in sess_obj.indicator.render().splitlines():
+                print(line)
+        return 0
+
+    if subcmd == "list":
+        registry = ScreenSessionRegistry(db)
+        all_sess = registry.list_all(limit=50)
+        if format_json:
+            print(json.dumps({"sessions": [s.to_dict() for s in all_sess]}, indent=2))
+            return 0
+        if not all_sess:
+            print("No screen sessions recorded.")
+            return 0
+        print("GuardianMesh Vista — Sessions")
+        print_divider()
+        print(f"{'SESSION':<20} {'DEVICE':<15} {'STATE':<22} {'REQUESTED'}")
+        print_divider(width=72)
+        for s in all_sess:
+            print(f"{s.session_id:<20} {s.device_id:<15} {s.state.value:<22} {s.requested_at[:19]}")
+        return 0
+
+    if subcmd == "diagnostics":
+        diag = controller.diagnostics()
+        if format_json:
+            print(json.dumps(diag.to_dict(), indent=2))
+        else:
+            print("GuardianMesh Vista — Diagnostics")
+            print_divider()
+            for k, v in diag.to_dict().items():
+                print(f"{k:<26} {v}")
+        return 0
+
+    # Default fallback: print status
+    print("Usage: guardian screen [status|request|approve|deny|start|stop|view|list|diagnostics]")
     return 0

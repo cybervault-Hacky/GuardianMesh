@@ -19,6 +19,7 @@ from guardianmesh.cli.commands import (
     cmd_init,
     cmd_pair,
     cmd_policy,
+    cmd_screen,
     cmd_status,
     cmd_telemetry,
     cmd_transport,
@@ -32,7 +33,7 @@ from guardianmesh.core.logging import setup_logging
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
-    desc = f"GuardianMesh (Phase 6: {__phase__}) — Consent-based parental device supervision system."
+    desc = f"GuardianMesh (Phase 7: {__phase__}) — Consent-based parental device supervision system."
     parser = argparse.ArgumentParser(
         prog="guardian",
         description=desc,
@@ -195,6 +196,72 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_trans_reconn.add_argument("device_id", type=str, help="Target device ID.")
     p_trans_reconn.add_argument("--json", action="store_true", help="JSON output format.")
+
+    # screen (Phase 7: Vista)
+    p_screen = subparsers.add_parser(
+        "screen", help="Manage consent-based view-only screen sessions (Vista)."
+    )
+    p_screen.add_argument("--json", action="store_true", help="Machine-readable JSON output.")
+    screen_sub = p_screen.add_subparsers(dest="screen_action", metavar="<action>")
+
+    p_screen_status = screen_sub.add_parser(
+        "status", help="Show the status of view-only screen sessions."
+    )
+    p_screen_status.add_argument("device_id", nargs="?", default=None, help="Filter by device ID.")
+    p_screen_status.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_request = screen_sub.add_parser(
+        "request", help="Parent requests a view-only screen session with a child device."
+    )
+    p_screen_request.add_argument("device_id", type=str, help="Target child device ID (GM-C-XXXXXXXX).")
+    p_screen_request.add_argument(
+        "--duration",
+        type=int,
+        default=None,
+        help="Maximum session duration in seconds (bounded).",
+    )
+    p_screen_request.add_argument("--label", type=str, default=None, help="Friendly label.")
+    p_screen_request.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_approve = screen_sub.add_parser(
+        "approve", help="Child-side explicit approval for a screen view request."
+    )
+    p_screen_approve.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_approve.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_deny = screen_sub.add_parser(
+        "deny", help="Child-side explicit denial for a screen view request."
+    )
+    p_screen_deny.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_deny.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_start = screen_sub.add_parser(
+        "start", help="Begin streaming frames for an APPROVED screen session."
+    )
+    p_screen_start.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_start.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_stop = screen_sub.add_parser(
+        "stop", help="Stop a screen session (parent- or child-initiated)."
+    )
+    p_screen_stop.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_stop.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_view = screen_sub.add_parser(
+        "view", help="Show live metadata for an active session (no frame rendering)."
+    )
+    p_screen_view.add_argument("session_id", type=str, help="Screen session ID.")
+    p_screen_view.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_list = screen_sub.add_parser(
+        "list", help="List all screen sessions recorded in the local database."
+    )
+    p_screen_list.add_argument("--json", action="store_true", help="JSON output format.")
+
+    p_screen_diag = screen_sub.add_parser(
+        "diagnostics", help="Show aggregate Vista subsystem diagnostics."
+    )
+    p_screen_diag.add_argument("--json", action="store_true", help="JSON output format.")
 
     # identity
     p_ident = subparsers.add_parser("identity", help="Manage cryptographic device identities.")
@@ -394,6 +461,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("  guardian pair      Manage secure parent-child device pairing and trust")
             print("  guardian telemetry Inspect privacy-bounded device health telemetry")
             print("  guardian transport Manage secure device transport and synchronized channels")
+            print("  guardian screen    Manage consent-based view-only screen sessions (Vista)")
             print("  guardian identity  Manage cryptographic device identities")
             print("  guardian init      Initialize local repository, database, and identity")
             print("  guardian audit     Inspect sanitized local audit logs")
@@ -432,6 +500,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not getattr(args, "transport_action", None):
                 args.transport_action = "status"
             return cmd_transport(args, config)
+        elif args.command == "screen":
+            if not getattr(args, "screen_action", None):
+                args.screen_action = "status"
+            return cmd_screen(args, config)
         elif args.command == "console":
             return cmd_console(args, config)
         elif args.command == "audit":

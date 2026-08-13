@@ -59,9 +59,29 @@ class ConsoleRenderer:
                 else "Warning       0"
             ),
             f"Active        {snapshot.active_alert_count}\n",
-            self.fmt.colorize("RECENT ACTIVITY", "white", bold=True),
+            self.fmt.colorize("SCREEN VIEW", "white", bold=True),
             self.fmt.rule(),
         ]
+
+        # Vista screen-view state (metadata only, no frame content).
+        try:
+            from guardianmesh.console.services import ConsoleService  # noqa: F401
+
+            # Snapshot is built by the service; we infer from extra fields if
+            # they were populated, otherwise default to INACTIVE.
+            screen_active = getattr(snapshot, "screen_active_sessions", 0)
+            screen_pending = getattr(snapshot, "screen_pending_authorizations", 0)
+            active_color = "green" if screen_active else "white"
+            lines.append(
+                f"Sessions      {self.fmt.colorize(str(screen_active), active_color)}"
+            )
+            lines.append(f"Pending       {screen_pending}\n")
+        except Exception:
+            lines.append("Sessions      0")
+            lines.append("Pending       0\n")
+
+        lines.append(self.fmt.colorize("RECENT ACTIVITY", "white", bold=True))
+        lines.append(self.fmt.rule())
 
         if not snapshot.recent_activity:
             lines.append("No recent activity recorded.")

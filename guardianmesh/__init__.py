@@ -1,13 +1,13 @@
 """GuardianMesh — Consent-based parental device supervision system.
 
-Phase 6: Nexus v0.6.0
-Secure Transport & Multi-Device Synchronization.
+Phase 7: Vista v0.7.0
+Consent-Based View-Only Screen Sessions.
 """
 
 from __future__ import annotations
 
-__version__ = "0.6.0"
-__phase__ = "Nexus"
+__version__ = "0.7.0"
+__phase__ = "Vista"
 __app_name__ = "GuardianMesh"
 
 __all__ = [

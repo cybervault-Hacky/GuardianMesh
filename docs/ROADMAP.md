@@ -15,9 +15,9 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
      ↓
   Phase 5: Console / Parent Dashboard (v0.5.0)
      ↓
-  Phase 6: Nexus / Secure Transport (v0.6.0)  <-- [Current Phase]
+  Phase 6: Nexus / Secure Transport (v0.6.0)
      ↓
-  Phase 7: View-Only Screen Sharing (v0.7.0)
+  Phase 7: Vista / Consent-Based Screen Sessions (v0.7.0)  <-- [Current Phase]
      ↓
   Phase 8: Dashboard / Reporting (v0.8.0)
      ↓
@@ -90,7 +90,7 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 6: Nexus / Secure Transport (v0.6.0) — *Current Phase*
+## Phase 6: Nexus / Secure Transport (v0.6.0) — *Complete*
 - **Objective**: End-to-end encrypted, authenticated transport and multi-device synchronization.
 - **Deliverables**:
   - Ephemeral X25519 Diffie-Hellman key agreement for forward secrecy.
@@ -105,14 +105,29 @@ GuardianMesh is structured across 10 progressive phases to deliver a transparent
 
 ---
 
-## Phase 7: View-Only Screen Sharing (v0.7.0)
-- **Objective**: Collaborative view-only screen sharing for remote guidance.
+## Phase 7: Vista / Consent-Based Screen Sessions (v0.7.0) — *Current Phase*
+- **Objective**: Consent-based, view-only screen observation with the strictest possible privacy guarantees. **NOT** a covert monitoring system.
 - **Mandatory Safety Rules**:
-  1. **Strictly View-Only**: Absolutely no remote control, input injection, or mouse emulation.
-  2. **Explicit Child Authorization**: Child must approve every screen view request via native system dialog.
-  3. **Prominent Active Indicator**: Persistent notification bar and visible visual border while screen is being viewed.
-  4. **Immediate Child Disconnect**: Child can pause or terminate viewing instantly at any point.
-  5. **No Covert Capture**: Completely impossible to start silently or without child acknowledgment.
+  1. **Trust != Screen Authorization**. Every screen session requires a fresh, explicit child-side authorization, even between trusted devices.
+  2. **No Remote Control**. No SCREEN_CONTROL, REMOTE_INPUT, EXECUTE, SHELL, COMMAND, KEYLOG, or remote tap/swipe/click/gesture message type is ever exposed. The protocol message-type allowlist is verified by an automated test.
+  3. **Prominent Child-Side Indicator**. A persistent `SCREEN VIEW ACTIVE` banner is rendered on the child side for the entire session lifetime. The child can stop the session at any moment.
+  4. **Bounded Session Lifetime**. Default 5 minutes, hard cap 1 hour. Inactivity timeout and trust revocation terminate the session immediately.
+  5. **No Frame Persistence**. The `screen_sessions` and `screen_authorizations` tables store metadata only. Frames are held only in a bounded in-memory buffer with `DROP_OLDEST` backpressure.
+  6. **No Bypass of OS Consent**. The shipped `AndroidScreenProvider` is a documented integration boundary; production capture requires a future Android companion component that uses `MediaProjection` with the system consent dialog. The current build never claims real capture is active.
+- **Deliverables**:
+  - Isolated `guardianmesh/screen/` module with `models`, `authorization`, `session`, `frames`, `codec`, `indicator`, `transport`, `controller`, `registry`, `errors`.
+  - Strict allowlist of 7 screen message types: `SCREEN_VIEW_REQUEST`, `SCREEN_VIEW_APPROVAL`, `SCREEN_VIEW_DENIAL`, `SCREEN_SESSION_START`, `SCREEN_FRAME`, `SCREEN_SESSION_STOP`, `SCREEN_SESSION_EXPIRED`.
+  - Versioned `ScreenFrame` model with strict validation (resolution, codec, payload size, sequence).
+  - Bounded `FrameStreamBuffer` with monotonic sequence tracking and explicit backpressure strategy.
+  - Deterministic `TestCodec` plus documented integration stubs for `H264`, `VP8`, `VP9`, `WEBP` (production encoders require a future Android companion component).
+  - `ScreenController` orchestrator that reuses the existing Nexus transport; no new encryption system.
+  - `ScreenIndicator` model for the child-side visible UI banner.
+  - 9 new audit event types with strict redaction (no payload, no credentials, no keys).
+  - CLI commands (`guardian screen status`, `request`, `approve`, `deny`, `start`, `stop`, `view`, `list`, `diagnostics`).
+  - Dashboard `SCREEN VIEW` block on the unified console.
+  - Database Migration 7 (`007_vista_screen_sessions`) — metadata only, no frame columns.
+  - 8 new doctor checks covering the full Vista subsystem.
+  - Documentation: `docs/VISTA.md`, `docs/SCREEN_PROTOCOL.md`, `docs/SCREEN_PRIVACY.md`.
 
 ---
 

@@ -81,7 +81,7 @@ When extending the SQLite schema:
 
 ## 6. Security Testing Guidelines
 
-Any PR touching security, identity, pairing, telemetry, policy, console, or transport code must:
+Any PR touching security, identity, pairing, telemetry, policy, console, transport, or screen-view code must:
 1. Verify that `ALLOWED_HEALTH_FIELDS` is strictly enforced and personal content keys are rejected.
 2. Ensure Sentinel evaluates only explicit technical conditions without behavioral inferences.
 3. Ensure no private keys, OTPs, session keys, or passwords leak into JSON exports or terminal outputs.
@@ -90,3 +90,20 @@ Any PR touching security, identity, pairing, telemetry, policy, console, or tran
 6. Ensure mutual Ed25519 authentication and X25519 forward secrecy for transport channels.
 7. Validate that file permissions remain `0700` for directories and `0600` for keys/databases.
 8. Pass 100% of existing tests without regressions.
+
+Any PR touching the Vista screen subsystem (Phase 7) must additionally:
+1. Verify that no remote-control message type is ever added to
+   `ScreenMessageType` or `transport.models.MessageType`.
+2. Verify that the `screen_sessions` and `screen_authorizations`
+   schemas contain no payload-bearing columns.
+3. Verify that frame payloads are never written to the database, the
+   audit log, or any log file.
+4. Verify that the visible `SCREEN VIEW ACTIVE` indicator is
+   rendered for every ACTIVE session and only for ACTIVE sessions.
+5. Verify that trust revocation tears down the active session.
+6. Verify that bounded session lifetime, inactivity timeout, and
+   transport disconnect all terminate the session.
+7. Verify that the `AndroidScreenProvider` is the only entry point
+   for screen capture and that it never claims
+   `is_real_capture = True` unless an actual native capture is
+   wired in.

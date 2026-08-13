@@ -1,164 +1,173 @@
-# GuardianMesh Parent Console & Unified Dashboard (Phase 5)
+# GuardianMesh Parent Console
 
-## 1. Overview & Architectural Principles
+The Parent Console is the local human-friendly interface for GuardianMesh
+Atlas v1.1.0. It turns the existing Trust, Vista, Aegis, Orion, Sentinel,
+and Atlas subsystems into simple parent-facing screens without exposing
+internal architecture.
 
-The GuardianMesh Console provides a **unified, privacy-bounded management dashboard** for parents to supervise device health, configure surveillance policies, inspect active incidents, and review audit records.
+## Architecture
 
-> **STRICT LOCAL & PRIVACY BOUNDARY:**
-> The Console operates **entirely locally in unprivileged user space** (Linux and Termux on Android). It displays strictly technical health and security metrics. It is mathematically and architecturally incapable of displaying personal content, messaging, browser history, keystrokes, or location.
-
+```text
+GuardianMesh backend (Python)
+  ├── identity, pairing, trust, telemetry, alerts, audit
+  ├── Vista screen authorization and session state
+  ├── Aegis system-consent and Android companion boundary
+  ├── Orion safe action and capability model
+  └── Atlas diagnostics and release health
+          │
+          ▼
+Local authenticated HTTP API (`127.0.0.1` only)
+          │
+          ▼
+Parent Console static web UI (HTML/CSS/JavaScript, no build step)
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                 GUARDIANMESH PARENT CONSOLE                 │
-├─────────────────────────────────────────────────────────────┤
-│  • Unified Dashboard (Devices, Health, Alerts, Activity)    │
-│  • Device Management (List, Detail, Health, Rename, Revoke) │
-│  • Sentinel Incident Center (Active, Acknowledge, Resolve)  │
-│  • Surveillance Policies (CRUD, Thresholds, Rules)          │
-│  • Out-of-Band Pairing Management                           │
-│  • Immutable Security Audit Log                             │
-│  • Automation-Friendly Machine-Readable JSON Export         │
-└─────────────────────────────────────────────────────────────┘
-```
 
----
+The console uses only the Python standard library for HTTP service. There is
+no cloud account, no external frontend framework, no remote server, and no
+third-party analytics. UI preferences are stored locally in the GuardianMesh
+data directory with `0600` permissions where supported.
 
-## 2. Unified Dashboard
+## Installation
 
 ```bash
-guardian console dashboard
+pip install -e ".[dev]"
+guardian init --role parent
 ```
 
-Output:
-```
-GuardianMesh
-═══════════════════════════════════════
-Console v0.5.0 (Console)
+Termux users need Python, git, libffi, clang, and make as documented in
+`docs/DEVELOPMENT.md`. The console does not require root, Android Studio,
+Node.js, or a frontend build toolchain.
 
-DEVICES
-───────────────────────────────────────
-Trusted       2
-Online        1
-Degraded      0
-Offline       1
+## Launching
 
-HEALTH
-───────────────────────────────────────
-Battery       82%
-Storage       45.0% free
-Connectivity  ONLINE
-
-ALERTS
-───────────────────────────────────────
-Critical      0
-Warning       1
-Active        1
-
-RECENT ACTIVITY
-───────────────────────────────────────
-01:54  Device heartbeat received
-01:52  Health alert resolved
-01:48  Device paired successfully
-───────────────────────────────────────
-```
-
-### Non-Interactive and JSON Modes
-- **Non-Interactive Mode**: `guardian console --non-interactive` or `guardian console dashboard` disables all interactive prompts, suitable for automated scripts and cron jobs.
-- **Machine-Readable JSON Mode**: `guardian console dashboard --json` outputs valid JSON without ANSI styling or secrets.
-
----
-
-## 3. Device Management
-
-The `guardian devices` command suite provides comprehensive device inspection and lifecycle management:
-
-### List All Trusted Devices
 ```bash
-guardian devices list
+guardian console --web
+# or the explicit subcommand
+guardian console web --no-open --port 8765 --host 127.0.0.1
 ```
 
-Output:
-```
-GuardianMesh Devices
-ID             LABEL           ROLE   HEALTH   TRUST
-────────────────────────────────────────────────────────
-GM-C-19A84E72  Kid Galaxy Tab  CHILD  ONLINE   TRUSTED
-GM-C-83A1F72C  Kid Phone       CHILD  OFFLINE  TRUSTED
+Options:
+
+- `--host`: bind host. Only `127.0.0.1`, `localhost`, or `::1` are accepted.
+- `--port`: TCP port, default `8765`.
+- `--no-open`: print the local URL without opening a browser.
+
+The server prints a local URL and remains in the foreground. Press
+`Ctrl+C` to stop it.
+
+## Navigation
+
+The UI provides persistent navigation for:
+
+- Home
+- Devices
+- Screen
+- Alerts
+- Activity
+- Settings
+- About
+
+Desktop uses a sidebar. Phone-sized windows use compact bottom navigation.
+
+## Device management
+
+The Devices page shows trusted devices, online/offline state, last seen,
+battery/storage where available, and alert counts. Device detail pages group
+information into Overview, Connection, Health, Permissions/Consent, Screen
+Sharing, Recent Activity, and Advanced details.
+
+Pairing and trust are not reimplemented by the UI. The console calls the
+existing GuardianMesh pairing and trust APIs.
+
+## Screen-sharing flow
+
+The Screen page always shows the consent requirements before starting:
+
+1. Parent authorization.
+2. Trusted device.
+3. Child approval in GuardianMesh.
+4. Android `MediaProjection` system permission.
+
+A session request can create the Vista PENDING authorization record through
+the existing `ScreenController`, but the UI cannot fabricate child approval
+or Android system consent. On Linux/Termux Python, the page clearly states
+that the GuardianMesh Android companion is required for real capture. No
+synthetic frames or fake live previews are shown.
+
+The STOP control is visible for every active session. The backend remains the
+authorization boundary.
+
+## Consent model
+
+The Parent Console preserves the existing model:
+
+```text
+Trust + Parent Authorization + System/Child Consent = Allowed Capability
 ```
 
-### Inspect Single Device Details
+For screen sharing, the existing Vista authorization and Aegis system-consent
+gates remain authoritative. The frontend only displays requirements and
+calls safe backend actions.
+
+## Localization
+
+All UI strings live in `guardianmesh/console/web/locales/`:
+
+- English (`en`)
+- Hindi (`hi`)
+- Hinglish (`hinglish`)
+- Portuguese (`pt`)
+- French (`fr`)
+- Chinese (`zh`)
+- Korean (`ko`)
+- Spanish (`es`)
+
+Hinglish uses conversational phrasing rather than mechanical word-for-word
+translation.
+
+## Settings and diagnostics
+
+Settings exposes only parent-safe preferences: language, appearance,
+notifications, local retention, and session timeout information. Advanced
+diagnostics call Atlas read-only checks and do not expose private keys,
+database paths beyond what is necessary, secrets, or frame bytes.
+
+## Security model
+
+- Default bind address is loopback only.
+- Requests are checked against the `Host` header.
+- State-changing requests require a local session cookie and CSRF token.
+- The API action surface is an allowlist. There is no shell, eval, command,
+  remote-input, file, or arbitrary Orion action endpoint.
+- Private keys, OTPs, passwords, tokens, and raw database files are never sent
+  to the browser.
+- Static responses use a restrictive Content Security Policy.
+- Audit records continue to use the existing redaction system.
+
+## Offline behavior
+
+The console is local-first and does not depend on cloud connectivity. It
+clearly displays offline state and never claims that a device is online when
+recent telemetry or transport state does not support that claim.
+
+## Troubleshooting
+
+- **Database not initialized:** run `guardian init --role parent`.
+- **Port already in use:** run `guardian console web --port 8766`.
+- **Screen sharing unavailable:** install/run the GuardianMesh Android
+  companion and complete the visible child/system consent flow.
+- **Browser does not open:** use `--no-open` and copy the printed URL.
+- **Unexpected local issue:** run `guardian doctor` and `guardian diagnostics`.
+
+## Termux usage
+
 ```bash
-guardian devices show GM-C-19A84E72
+pkg install python git libffi clang make
+pip install -e ".[dev]"
+guardian init --role parent
+guardian console web --no-open --port 8765
 ```
 
-Output:
-```
-Device Details
-────────────────────────────────
-ID:              GM-C-19A84E72
-Label:           Kid Galaxy Tab
-Role:            CHILD
-Trust:           ACTIVE
-Fingerprint:     SHA256:YYc/5lJ8WNF5NJEWdUmY6B3jEemuevN+P/zHzdV7w+I
-
-Health Status
-────────────────────────────────
-State:           ONLINE
-Battery:         82% (Charging)
-Storage:         26.1 GB free
-Uptime:          5h 7m
-Connectivity:    ONLINE
-Last heartbeat:  14s ago
-
-Active Alerts:
-  ! [WARNING] Battery level is low: 14% (threshold: <20%)
-```
-
-### Focused Health Telemetry View
-```bash
-guardian devices health GM-C-19A84E72
-```
-
-### Device Renaming & Revocation
-```bash
-# Rename device
-guardian devices rename GM-C-19A84E72 "Kid Smart Tablet"
-
-# Revoke device trust immediately
-guardian devices revoke GM-C-19A84E72
-```
-
----
-
-## 4. Console Subcommands & Shortcuts
-
-| Command | Description |
-|---|---|
-| `guardian console` | Launch interactive menu (in TTY) or print dashboard. |
-| `guardian console dashboard [--watch]` | Render dashboard snapshot (or continuously refresh). |
-| `guardian console devices [--json]` | Monitored devices summary. |
-| `guardian console alerts [--json]` | Active Sentinel alerts view. |
-| `guardian console policies [--json]` | Device policies overview. |
-| `guardian console pairing [--json]` | Pairing sessions and trusted devices summary. |
-| `guardian console audit [--json]` | Recent security and system activity. |
-| `guardian console status [--json]` | Subsystem readiness verification. |
-
----
-
-## 5. Terminal Typography, Narrow Screen & Color Support
-
-1. **Adaptive Width Layout**: The `TerminalFormatter` dynamically adjusts tables and card layouts to fit widths from `40` columns (mobile Termux) up to `120` columns (desktop terminals).
-2. **Color & NO_COLOR Support**:
-   - ANSI color formatting is enabled by default in TTY environments.
-   - Automatically disabled when piped, redirected, or when `NO_COLOR=1` is set.
-   - Can be explicitly disabled with `--no-color`.
-   - Colors are supplementary: meaning is **never** conveyed solely through color.
-3. **Unicode & ASCII Fallbacks**: Supports both clean Unicode line drawing (`─`, `═`, `│`) and ASCII borders (`-`, `=`, `|`).
-
----
-
-## 6. Security Review & Privacy Assurance
-
-- **Zero Private Keys in JSON**: Dashboard and device JSON exports contain only public identifiers, fingerprints, and technical metrics.
-- **Zero Plaintext Secrets**: No OTPs, passwords, or SMTP credentials are rendered.
-- **Strict Revocation Enforcement**: Revoked devices are immediately flagged as `REVOKED` and blocked from generating active telemetry or alerts.
+Open the printed URL in the Android browser on the same parent device. The
+Python/Termux process cannot perform Android screen capture by itself; that
+requires the separate Aegis Android companion and system consent.

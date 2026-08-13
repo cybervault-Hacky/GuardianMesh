@@ -208,3 +208,12 @@ The privacy invariants are verified by an explicit test suite
 A test failure in any of the above cases is treated as a
 **critical privacy regression** and must be fixed before the build
 is released.
+
+
+### Phase 10 update — Parent Console UI (v1.1.0)
+
+The Parent Console stores only local UI preferences such as language and theme.
+It does not introduce cloud accounts, telemetry, message collection, browser
+history collection, clipboard collection, location collection, microphone/camera
+activation, keylogging, or frame storage. API responses are presentation models
+built from existing sanitized metadata and audit records.

@@ -38,7 +38,7 @@ from guardianmesh.core.logging import setup_logging
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
-    desc = f"GuardianMesh (Phase 7: {__phase__}) — Consent-based parental device supervision system."
+    desc = f"GuardianMesh ({__phase__}) — Consent-based parental device supervision system."
     parser = argparse.ArgumentParser(
         prog="guardian",
         description=desc,
@@ -101,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     # console (Phase 5)
     p_con = subparsers.add_parser("console", help="Parent console and unified supervision dashboard.")
+    p_con.add_argument("--web", action="store_true", help="Launch the local Parent Console web UI.")
+    p_con.add_argument("--no-open", action="store_true", help="Do not open a browser for the web UI.")
+    p_con.add_argument(
+        "--host", default="127.0.0.1", help="Web UI bind host (localhost only; default 127.0.0.1)."
+    )
+    p_con.add_argument("--port", type=int, default=8765, help="Web UI port (default 8765).")
     p_con.add_argument("--json", action="store_true", help="Machine-readable JSON output format.")
     p_con.add_argument("--non-interactive", action="store_true", help="Disable interactive navigation menu.")
     p_con.add_argument("--watch", action="store_true", help="Continuously refresh dashboard view.")
@@ -110,6 +116,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_con.add_argument("--no-color", action="store_true", help="Disable color styling.")
 
     con_sub = p_con.add_subparsers(dest="console_action", metavar="<action>")
+
+    p_con_web = con_sub.add_parser("web", help="Launch the local Parent Console web UI.")
+    p_con_web.add_argument("--no-open", action="store_true", help="Do not open a browser.")
+    p_con_web.add_argument("--host", default="127.0.0.1", help="Bind host (localhost only).")
+    p_con_web.add_argument("--port", type=int, default=8765, help="Bind port.")
 
     p_con_dash = con_sub.add_parser("dashboard", help="Unified parent supervision dashboard.")
     p_con_dash.add_argument("--json", action="store_true", help="JSON output format.")
